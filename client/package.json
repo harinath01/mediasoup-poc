@@ -11,6 +11,9 @@
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]
   },
+  "dependencies": {
+    "mediasoup-client": "^3.7.0"
+  },
   "devDependencies": {
     "vite": "^6.3.0"
   }
