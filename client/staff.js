@@ -1,7 +1,13 @@
 import { apiCall } from './api.js';
 import * as mediasoupClient from 'mediasoup-client';
 
+let device = null;
 let recvTransport = null;
+let currentRoomId = '';
+let currentName = '';
+let consumedProducerIds = new Set();
+let pollInterval = null;
+let streams = {};
 
 function setStatus(state, text) {
   const bar = document.getElementById('statusBar');
@@ -10,6 +16,20 @@ function setStatus(state, text) {
   bar.className = `status ${state}`;
   dot.className = `dot ${state}`;
   label.textContent = text;
+}
+
+function toggleRemoteAudio(studentName) {
+  const tile = document.getElementById(`tile-${studentName}`);
+  if (!tile) return;
+  const btn = tile.querySelector('.mute-btn');
+  const video = tile.querySelector('video');
+  const stream = video?.srcObject;
+  if (!stream) return;
+  const track = stream.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  btn.className = `mute-btn${track.enabled ? '' : ' muted'}`;
+  btn.textContent = track.enabled ? '🔊' : '🔇';
 }
 
 function addVideoTile(studentName, stream) {
@@ -27,7 +47,17 @@ function addVideoTile(studentName, stream) {
 
     const label = document.createElement('div');
     label.className = 'label';
-    label.textContent = studentName;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = studentName;
+
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'mute-btn';
+    muteBtn.textContent = '🔊';
+    muteBtn.onclick = () => toggleRemoteAudio(studentName);
+
+    label.appendChild(nameSpan);
+    label.appendChild(muteBtn);
 
     tile.appendChild(video);
     tile.appendChild(label);
@@ -37,6 +67,44 @@ function addVideoTile(studentName, stream) {
   const video = tile.querySelector('video');
   if (video.srcObject !== stream) {
     video.srcObject = stream;
+  }
+}
+
+async function consumeProducer(producer) {
+  if (consumedProducerIds.has(producer.id)) return;
+  consumedProducerIds.add(producer.id);
+
+  setStatus('connecting', `Consuming ${producer.kind} from ${producer.studentName}...`);
+
+  const consumerData = await apiCall('POST', '/api/staff/consume', {
+    transportId: recvTransport.id,
+    producerId: producer.id,
+    rtpCapabilities: device.rtpCapabilities,
+  });
+
+  const consumer = await recvTransport.consume({
+    id: consumerData.id,
+    producerId: consumerData.producerId,
+    kind: consumerData.kind,
+    rtpParameters: consumerData.rtpParameters,
+  });
+
+  console.log(`consumed ${consumer.kind} from ${producer.studentName}`);
+
+  if (!streams[producer.studentName]) {
+    streams[producer.studentName] = new MediaStream();
+  }
+  streams[producer.studentName].addTrack(consumer.track);
+  addVideoTile(producer.studentName, streams[producer.studentName]);
+}
+
+async function pollNewProducers() {
+  if (!recvTransport || !currentRoomId) return;
+
+  const producers = await apiCall('GET', `/api/staff/room/${currentRoomId}/producers`);
+
+  for (const producer of producers) {
+    await consumeProducer(producer);
   }
 }
 
@@ -71,6 +139,10 @@ async function onJoinRoom(roomId) {
     return;
   }
 
+  if (pollInterval) clearInterval(pollInterval);
+  currentName = name;
+  currentRoomId = roomId;
+
   const result = await apiCall('POST', '/api/staff/join', { name, roomId });
   console.log('staff join payload:', JSON.stringify(result, null, 2));
 
@@ -78,7 +150,7 @@ async function onJoinRoom(roomId) {
   document.getElementById('activeCard').classList.remove('hidden');
   document.getElementById('roomInfo').textContent = `Room: ${result.roomId} | Staff: ${result.name}`;
 
-  const device = new mediasoupClient.Device();
+  device = new mediasoupClient.Device();
   await device.load({ routerRtpCapabilities: result.routerRtpCapabilities });
 
   recvTransport = device.createRecvTransport({
@@ -111,38 +183,19 @@ async function onJoinRoom(roomId) {
     }).then(callback).catch(errback);
   });
 
+  consumedProducerIds.clear();
+  streams = {};
+
   setStatus('connecting', 'Fetching producers...');
 
   const producers = await apiCall('GET', `/api/staff/room/${roomId}/producers`);
   console.log('room producers:', producers);
 
-  const streams = {};
-
   for (const producer of producers) {
-    setStatus('connecting', `Consuming ${producer.kind} from ${producer.studentName}...`);
-
-    const consumerData = await apiCall('POST', '/api/staff/consume', {
-      transportId: recvTransport.id,
-      producerId: producer.id,
-      rtpCapabilities: device.rtpCapabilities,
-    });
-
-    const consumer = await recvTransport.consume({
-      id: consumerData.id,
-      producerId: consumerData.producerId,
-      kind: consumerData.kind,
-      rtpParameters: consumerData.rtpParameters,
-    });
-
-    console.log(`consumed ${consumer.kind} from ${producer.studentName}`);
-
-    if (!streams[producer.studentName]) {
-      streams[producer.studentName] = new MediaStream();
-    }
-    streams[producer.studentName].addTrack(consumer.track);
-    addVideoTile(producer.studentName, streams[producer.studentName]);
+    await consumeProducer(producer);
   }
 
+  pollInterval = setInterval(pollNewProducers, 3000);
   setStatus('connected', 'Monitoring Active');
 }
 

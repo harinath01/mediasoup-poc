@@ -4,15 +4,34 @@ import * as mediasoupClient from 'mediasoup-client';
 let sendTransport = null;
 let currentName = '';
 let currentRoomId = '';
+let localStream = null;
 
 function setStatus(state, text) {
   const bar = document.getElementById('statusBar');
   const dot = bar.querySelector('.dot');
   const label = document.getElementById('statusText');
-
   bar.className = `status ${state}`;
   dot.className = `dot ${state}`;
   label.textContent = text;
+}
+
+function toggleMic() {
+  const btn = document.getElementById('btnMic');
+  const track = localStream?.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  btn.className = track.enabled ? 'active' : 'danger';
+  const prev = btn.textContent;
+  btn.textContent = track.enabled ? '🎤' : '🔇';
+}
+
+function toggleCam() {
+  const btn = document.getElementById('btnCam');
+  const track = localStream?.getVideoTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  btn.className = track.enabled ? 'active' : 'danger';
+  btn.textContent = track.enabled ? '📹' : '🚫';
 }
 
 async function onJoin() {
@@ -90,6 +109,7 @@ async function onJoin() {
     audio: true,
     video: { width: { ideal: 640 }, height: { ideal: 480 } },
   });
+  localStream = stream;
   document.getElementById('localVideo').srcObject = stream;
 
   setStatus('connecting', 'Publishing media...');
@@ -101,3 +121,5 @@ async function onJoin() {
 }
 
 window.onJoin = onJoin;
+window.toggleMic = toggleMic;
+window.toggleCam = toggleCam;
