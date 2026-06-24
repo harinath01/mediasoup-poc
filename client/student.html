@@ -22,7 +22,12 @@
       display: flex;
       flex-direction: column;
       gap: .75rem;
-      width: 320px;
+      width: 400px;
+    }
+    video {
+      width: 100%;
+      border-radius: 6px;
+      background: #000;
     }
     h2 { font-size: 1.1rem; color: #333; }
     input {
@@ -45,15 +50,36 @@
     button:hover { background: #357abd; }
     .back { font-size: .8rem; color: #888; text-align: center; }
     .back a { color: #4a90d9; }
+    .hidden { display: none; }
+    .status {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .5rem .75rem; border-radius: 6px; font-size: .9rem;
+    }
+    .status.connected { background: #e8f5e9; color: #2e7d32; }
+    .status.connecting { background: #fff3e0; color: #e65100; }
+    .status.failed { background: #ffebee; color: #c62828; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .dot.connected { background: #4caf50; animation: pulse 1.5s infinite; }
+    .dot.connecting { background: #ff9800; animation: pulse 1s infinite; }
+    .dot.failed { background: #f44336; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: .3; } 100% { opacity: 1; } }
   </style>
 </head>
 <body>
-  <div class="card">
+  <div id="joinCard" class="card">
     <h2>Join Room (Student)</h2>
     <input id="name" placeholder="Your name" />
     <input id="roomId" placeholder="Room ID" />
     <button onclick="onJoin()">Join</button>
     <div class="back"><a href="index.html">&larr; Back</a></div>
+  </div>
+
+  <div id="activeCard" class="card hidden">
+    <div id="statusBar" class="status connecting"><span class="dot connecting"></span> <span id="statusText">Initializing...</span></div>
+    <p id="roomInfo" style="font-size:.85rem;color:#666;"></p>
+    <video id="localVideo" autoplay muted playsinline></video>
   </div>
 
   <script type="module" src="student.js"></script>

@@ -4,6 +4,8 @@ import { getWorker } from '../worker.js';
 
 const router = Router();
 
+const ANNOUNCED_IP = process.env.MEDIASOUP_LISTEN_IP || '127.0.0.1';
+
 const mediaCodecs = [
   { kind: 'audio' as const, mimeType: 'audio/opus', clockRate: 48000, channels: 2 },
   { kind: 'video' as const, mimeType: 'video/VP8', clockRate: 90000 },
@@ -30,7 +32,7 @@ router.post('/api/students/join', async (req: Request, res: Response) => {
   }
 
   const transport = await router.createWebRtcTransport({
-    listenInfos: [{ protocol: 'udp', ip: '0.0.0.0', announcedAddress: '127.0.0.1' }],
+    listenInfos: [{ protocol: 'udp', ip: '0.0.0.0', announcedAddress: ANNOUNCED_IP }],
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
@@ -51,6 +53,42 @@ router.post('/api/students/join', async (req: Request, res: Response) => {
       dtlsParameters: transport.dtlsParameters,
     },
   });
+});
+
+router.post('/api/students/connect-transport', async (req: Request, res: Response) => {
+  const { transportId, dtlsParameters } = req.body;
+  if (!transportId || !dtlsParameters) {
+    res.status(400).json({ error: 'transportId and dtlsParameters are required' });
+    return;
+  }
+
+  const transport = transports.get(transportId);
+  if (!transport) {
+    res.status(404).json({ error: 'transport not found' });
+    return;
+  }
+
+  await transport.connect({ dtlsParameters });
+  console.log(`[connect-transport] transport=${transportId}`);
+  res.json({ ok: true });
+});
+
+router.post('/api/students/produce', async (req: Request, res: Response) => {
+  const { transportId, kind, rtpParameters } = req.body;
+  if (!transportId || !kind || !rtpParameters) {
+    res.status(400).json({ error: 'transportId, kind, and rtpParameters are required' });
+    return;
+  }
+
+  const transport = transports.get(transportId);
+  if (!transport) {
+    res.status(404).json({ error: 'transport not found' });
+    return;
+  }
+
+  const producer = await transport.produce({ kind, rtpParameters });
+  console.log(`[produce] transport=${transportId}, kind=${kind}, producer=${producer.id}`);
+  res.json({ id: producer.id });
 });
 
 export default router;
