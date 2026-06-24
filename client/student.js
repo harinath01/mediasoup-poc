@@ -2,6 +2,8 @@ import { apiCall } from './api.js';
 import * as mediasoupClient from 'mediasoup-client';
 
 let sendTransport = null;
+let currentName = '';
+let currentRoomId = '';
 
 function setStatus(state, text) {
   const bar = document.getElementById('statusBar');
@@ -21,6 +23,9 @@ async function onJoin() {
     alert('Name and Room ID are required');
     return;
   }
+
+  currentName = name;
+  currentRoomId = roomId;
 
   const result = await apiCall('POST', '/api/students/join', { name, roomId });
   console.log('student join payload:', JSON.stringify(result, null, 2));
@@ -68,6 +73,8 @@ async function onJoin() {
         transportId: sendTransport.id,
         kind,
         rtpParameters,
+        name: currentName,
+        roomId: currentRoomId,
       });
       callback({ id });
     } catch (err) {

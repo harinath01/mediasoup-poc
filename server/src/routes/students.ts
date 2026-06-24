@@ -1,15 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { getOrCreateRoom, routers, transports } from '../rooms.js';
-import { getWorker } from '../worker.js';
+import { getOrCreateRoom, transports, producers } from '../rooms.js';
+import { getOrCreateRoomRouter, createWebRtcTransport } from '../utils.js';
 
 const router = Router();
-
-const ANNOUNCED_IP = process.env.MEDIASOUP_LISTEN_IP || '127.0.0.1';
-
-const mediaCodecs = [
-  { kind: 'audio' as const, mimeType: 'audio/opus', clockRate: 48000, channels: 2 },
-  { kind: 'video' as const, mimeType: 'video/VP8', clockRate: 90000 },
-];
 
 router.post('/api/students/join', async (req: Request, res: Response) => {
   const { name, roomId } = req.body;
@@ -23,20 +16,8 @@ router.post('/api/students/join', async (req: Request, res: Response) => {
     room.students.push(name);
   }
 
-  let router = routers.get(roomId);
-  if (!router) {
-    const worker = getWorker();
-    router = await worker.createRouter({ mediaCodecs });
-    routers.set(roomId, router);
-    console.log(`[router] created for room=${roomId}`);
-  }
-
-  const transport = await router.createWebRtcTransport({
-    listenInfos: [{ protocol: 'udp', ip: '0.0.0.0', announcedAddress: ANNOUNCED_IP }],
-    enableUdp: true,
-    enableTcp: true,
-    preferUdp: true,
-  });
+  const roomRouter = await getOrCreateRoomRouter(roomId);
+  const transport = await createWebRtcTransport(roomRouter);
   transports.set(transport.id, transport);
 
   console.log(`[student join] room=${roomId}, name=${name}, transport=${transport.id}`);
@@ -45,7 +26,7 @@ router.post('/api/students/join', async (req: Request, res: Response) => {
     ok: true,
     name,
     roomId,
-    routerRtpCapabilities: router.rtpCapabilities,
+    routerRtpCapabilities: roomRouter.rtpCapabilities,
     transport: {
       id: transport.id,
       iceParameters: transport.iceParameters,
@@ -74,7 +55,7 @@ router.post('/api/students/connect-transport', async (req: Request, res: Respons
 });
 
 router.post('/api/students/produce', async (req: Request, res: Response) => {
-  const { transportId, kind, rtpParameters } = req.body;
+  const { transportId, kind, rtpParameters, name, roomId } = req.body;
   if (!transportId || !kind || !rtpParameters) {
     res.status(400).json({ error: 'transportId, kind, and rtpParameters are required' });
     return;
@@ -87,6 +68,12 @@ router.post('/api/students/produce', async (req: Request, res: Response) => {
   }
 
   const producer = await transport.produce({ kind, rtpParameters });
+  producers.set(producer.id, {
+    transport: producer,
+    roomId: roomId || '',
+    studentName: name || 'unknown',
+  });
+
   console.log(`[produce] transport=${transportId}, kind=${kind}, producer=${producer.id}`);
   res.json({ id: producer.id });
 });
