@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student - mediasoup POC</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+      width: 320px;
+    }
+    h2 { font-size: 1.1rem; color: #333; }
+    input {
+      padding: .6rem .75rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: .9rem;
+      outline: none;
+    }
+    input:focus { border-color: #4a90d9; }
+    button {
+      padding: .6rem;
+      background: #4a90d9;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: .9rem;
+      cursor: pointer;
+    }
+    button:hover { background: #357abd; }
+    .back { font-size: .8rem; color: #888; text-align: center; }
+    .back a { color: #4a90d9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Join Room (Student)</h2>
+    <input id="name" placeholder="Your name" />
+    <input id="roomId" placeholder="Room ID" />
+    <button onclick="onJoin()">Join</button>
+    <div class="back"><a href="index.html">&larr; Back</a></div>
+  </div>
+
+  <script type="module" src="student.js"></script>
+</body>
+</html>
