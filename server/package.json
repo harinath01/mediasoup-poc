@@ -10,7 +10,10 @@
     "start:direct": "tsx src/server.ts"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["mediasoup"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "mediasoup"
+    ]
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
