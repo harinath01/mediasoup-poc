@@ -1,4 +1,5 @@
 import { types as mediasoupTypes } from 'mediasoup';
+import { clearChatRoom } from './chat.js';
 
 export interface Room {
   id: string;
@@ -62,6 +63,7 @@ function removeParticipant(roomId: string, participantName: string, role: Partic
     if (router && !router.closed) {
       router.close();
     }
+    clearChatRoom(roomId);
     rooms.delete(roomId);
     routers.delete(roomId);
   }

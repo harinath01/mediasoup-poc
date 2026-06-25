@@ -4,6 +4,7 @@ import * as mediasoupClient from 'mediasoup-client';
 import { apiCall, sendJsonBeacon } from '../api.js';
 import AppShell, { cardClass, inputClass } from '../components/AppShell.jsx';
 import { STATUS_COPY } from '../constants/status.js';
+import { useRoomChat } from '../useRoomChat.js';
 
 function StudentPage() {
   const [name, setName] = useState('');
@@ -16,12 +17,21 @@ function StudentPage() {
   const [camEnabled, setCamEnabled] = useState(true);
   const [isLeaving, setIsLeaving] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
   const [localStream, setLocalStream] = useState(null);
   const localVideoRef = useRef(null);
   const sendTransportRef = useRef(null);
   const localStreamRef = useRef(null);
   const hasLeftRef = useRef(false);
   const activeSessionRef = useRef({ name: '', roomId: '' });
+  const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
+  const joinedName = roomInfo.split(' | ')[1]?.replace('Name: ', '') || '';
+  const { messages, presence, connected: chatConnected, chatError, sendMessage } = useRoomChat({
+    enabled: joined,
+    roomId: joinedRoomId,
+    name: joinedName,
+    role: 'student',
+  });
 
   useEffect(() => {
     if (localVideoRef.current) {
@@ -207,6 +217,19 @@ function StudentPage() {
     setMicEnabled(true);
     setCamEnabled(true);
     setChatOpen(false);
+    setChatDraft('');
+  }
+
+  async function handleSendChatMessage() {
+    const text = chatDraft.trim();
+    if (!text) return;
+
+    try {
+      await sendMessage({ text });
+      setChatDraft('');
+    } catch (err) {
+      setError(err.message || 'Failed to send chat message.');
+    }
   }
 
   return (
@@ -281,7 +304,7 @@ function StudentPage() {
             <div className="mt-6 flex w-full items-center gap-2 rounded-lg bg-emerald-950/10 px-4 py-3 text-left">
               <span className="text-sm font-semibold text-primary">Proctor:</span>
               <span className="min-w-0 flex-1 truncate text-[0.95rem] text-white/75">
-                Hello {name.trim() || 'student'}, please ensure your camera remains centered and clearly visible.
+                {messages.findLast(message => message.senderRole === 'staff')?.text || 'No staff messages yet.'}
               </span>
             </div>
 
@@ -330,35 +353,47 @@ function StudentPage() {
                 <div className="flex items-center justify-center bg-emerald-950/10 px-4 py-2">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-primary" />
-                    <span className="text-xs font-semibold text-white/70">Staff Online</span>
+                    <span className="text-xs font-semibold text-white/70">{presence.staff.length ? `${presence.staff.join(', ')} online` : 'Waiting for staff'}</span>
                   </div>
                 </div>
 
                 <div className="flex-1 overflow-auto px-4 py-4">
                   <div className="flex min-h-full flex-col justify-end gap-5">
-                    <div className="flex flex-col items-start">
-                      <span className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-white/45">Proctor</span>
-                      <div className="max-w-[85%] rounded-2xl rounded-tl-md bg-primary px-4 py-3 text-[0.95rem] text-white shadow-action">
-                        Hello {name.trim() || 'student'}, please ensure your camera is positioned correctly.
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-white/45">Me</span>
-                      <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-white/[0.08] px-4 py-3 text-[0.95rem] text-white/85">
-                        Understood, adjusting it now.
-                      </div>
-                    </div>
+                    {messages.length ? messages.map(message => {
+                      const ownMessage = message.senderName === joinedName && message.senderRole === 'student';
+                      return (
+                        <div className={`flex flex-col ${ownMessage ? 'items-end' : 'items-start'}`} key={message.id}>
+                          <span className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-white/45">
+                            {ownMessage ? 'Me' : message.senderName}
+                          </span>
+                          <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-[0.95rem] ${ownMessage ? 'rounded-tr-md bg-white/[0.08] text-white/85' : 'rounded-tl-md bg-primary text-white shadow-action'}`}>
+                            {message.text}
+                          </div>
+                          {!ownMessage && message.recipientMode === 'student' ? <span className="mt-1 text-[11px] uppercase tracking-[0.08em] text-primary/80">Direct message</span> : null}
+                        </div>
+                      );
+                    }) : (
+                      <div className="py-6 text-center text-sm text-white/38">No messages yet.</div>
+                    )}
                   </div>
                 </div>
 
                 <div className="border-t border-white/[0.08] bg-[#1c1b1b] p-4">
+                  {chatError ? <div className="mb-3 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-[#f3b4c1]">{chatError}</div> : null}
                   <div className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#0f0f0f] px-3 py-2">
                     <input
                       className="min-w-0 flex-1 bg-transparent py-2 text-[0.95rem] text-white outline-none placeholder:text-white/35"
                       placeholder="Type a message..."
-                      readOnly
+                      value={chatDraft}
+                      onChange={event => setChatDraft(event.target.value)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleSendChatMessage();
+                        }
+                      }}
                     />
-                    <button className="text-primary transition hover:text-indigo-300" type="button">
+                    <button className="text-primary transition hover:text-indigo-300 disabled:cursor-default disabled:opacity-40" disabled={!chatConnected || !chatDraft.trim()} onClick={handleSendChatMessage} type="button">
                       <SendInlineIcon />
                     </button>
                   </div>

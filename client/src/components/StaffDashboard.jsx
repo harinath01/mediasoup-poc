@@ -16,6 +16,15 @@ function StaffDashboard({
   rooms,
   sidebarOpen,
   setSidebarOpen,
+  messages,
+  presence,
+  chatDraft,
+  setChatDraft,
+  chatRecipient,
+  setChatRecipient,
+  chatConnected,
+  chatError,
+  sendChatMessage,
   tiles,
   tileVideoRefs,
   error,
@@ -67,7 +76,17 @@ function StaffDashboard({
       <aside className={`${sidebarOpen ? 'flex' : 'hidden'} min-h-0 flex-col overflow-hidden rounded-r-xl border-y border-r border-white/[0.05] bg-[#16161f]/98`}>
         <AlertsPanel isOpen={alertsOpen} setIsOpen={setAlertsOpen} />
         <PriorityQueuePanel isOpen={queueOpen} setIsOpen={setQueueOpen} />
-        <ChatPanel />
+        <ChatPanel
+          chatConnected={chatConnected}
+          chatDraft={chatDraft}
+          chatError={chatError}
+          chatRecipient={chatRecipient}
+          messages={messages}
+          presence={presence}
+          sendChatMessage={sendChatMessage}
+          setChatDraft={setChatDraft}
+          setChatRecipient={setChatRecipient}
+        />
       </aside>
     </div>
   );
@@ -389,37 +408,70 @@ function PriorityQueuePanel({ isOpen, setIsOpen }) {
   );
 }
 
-function ChatPanel() {
+function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient, setChatRecipient, chatConnected, chatError, sendChatMessage }) {
   return (
     <section className="min-h-0 flex flex-1 flex-col">
       <div className="px-6 py-5">
         <div className="flex items-center gap-3 text-[1.05rem] font-extrabold uppercase tracking-[0.08em] text-white/80">
-          <span>Chatting With:</span>
-          <span className="rounded-md bg-primary/20 px-3 py-1 text-primary">Elena G.</span>
+          <span>Room Chat</span>
+          <span className="rounded-md bg-primary/20 px-3 py-1 text-primary">{presence.students.length} Students</span>
         </div>
         <button className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl bg-white/[0.16] px-4 py-4 text-base font-extrabold uppercase tracking-tight text-white transition hover:bg-white/[0.22]" type="button">
           <BroadcastIcon />
-          Broadcast to All
+          {presence.staff.length ? `${presence.staff.join(', ')} Online` : 'Broadcast to All'}
         </button>
+        <div className="mt-4">
+          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-white/45">Send To</label>
+          <select
+            className="w-full rounded-xl border border-white/[0.08] bg-[#101018] px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-primary/80"
+            value={chatRecipient}
+            onChange={event => setChatRecipient(event.target.value)}
+          >
+            <option value="all">Broadcast to all students</option>
+            {presence.students.map(studentName => (
+              <option key={studentName} value={studentName}>
+                {studentName}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-6">
         <div className="space-y-5 pb-6">
-          <div className="rounded-2xl bg-white/[0.12] px-4 py-4 text-white/90">
-            <div className="text-xs font-bold uppercase tracking-[0.08em] text-white/50">Elena G.</div>
-            <p className="mt-3 text-[1.05rem] leading-8">Placeholder student message. Chat integration is not wired yet, so this is static UI only.</p>
-          </div>
-          <div className="ml-10 rounded-2xl bg-primary px-4 py-4 text-white shadow-action">
-            <div className="text-xs font-bold uppercase tracking-[0.08em] text-white/65">You</div>
-            <p className="mt-3 text-[1.05rem] leading-8">Placeholder proctor reply. Real-time chat will be connected later.</p>
-          </div>
+          {messages.length ? messages.map(message => {
+            const ownMessage = message.senderRole === 'staff';
+            return (
+              <div className={ownMessage ? 'ml-10 rounded-2xl bg-primary px-4 py-4 text-white shadow-action' : 'rounded-2xl bg-white/[0.12] px-4 py-4 text-white/90'} key={message.id}>
+                <div className={`text-xs font-bold uppercase tracking-[0.08em] ${ownMessage ? 'text-white/65' : 'text-white/50'}`}>{ownMessage ? 'You' : `${message.senderName} (${message.senderRole})`}</div>
+                <p className="mt-3 text-[1.05rem] leading-8">{message.text}</p>
+                {message.senderRole === 'staff' ? (
+                  <div className={`mt-3 text-[11px] font-bold uppercase tracking-[0.08em] ${ownMessage ? 'text-white/70' : 'text-primary/80'}`}>
+                    {message.recipientMode === 'all' ? 'Broadcast' : `Direct to ${message.recipientName}`}
+                  </div>
+                ) : null}
+              </div>
+            );
+          }) : <div className="rounded-2xl border border-white/[0.05] bg-white/[0.03] px-4 py-5 text-sm text-white/42">No chat messages yet.</div>}
         </div>
       </div>
 
       <div className="sticky bottom-0 border-t border-white/[0.05] bg-[#16161f]/98 px-6 py-4">
+        {chatError ? <div className="mb-3 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-[#f3b4c1]">{chatError}</div> : null}
         <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#101018] p-3">
-          <input className="min-w-0 flex-1 bg-transparent px-3 py-3 text-lg text-white outline-none placeholder:text-white/28" placeholder="Message Elena..." readOnly />
-          <button className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-white shadow-action" type="button"><SendIcon /></button>
+          <input
+            className="min-w-0 flex-1 bg-transparent px-3 py-3 text-lg text-white outline-none placeholder:text-white/28"
+            placeholder={chatRecipient === 'all' ? 'Broadcast to room...' : `Message ${chatRecipient}...`}
+            value={chatDraft}
+            onChange={event => setChatDraft(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                sendChatMessage();
+              }
+            }}
+          />
+          <button className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-white shadow-action disabled:cursor-default disabled:opacity-40" disabled={!chatConnected || !chatDraft.trim()} onClick={sendChatMessage} type="button"><SendIcon /></button>
         </div>
       </div>
     </section>

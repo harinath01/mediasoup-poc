@@ -4,6 +4,7 @@ import { apiCall, sendJsonBeacon } from '../api.js';
 import AppShell from '../components/AppShell.jsx';
 import StaffDashboard from '../components/StaffDashboard.jsx';
 import StaffJoinPanel from '../components/StaffJoinPanel.jsx';
+import { useRoomChat } from '../useRoomChat.js';
 
 function StaffPage() {
   const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
@@ -18,6 +19,8 @@ function StaffPage() {
   const [viewMode, setViewMode] = useState('grid');
   const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(TWO_HOURS_IN_SECONDS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatRecipient, setChatRecipient] = useState('all');
   const recvTransportRef = useRef(null);
   const deviceRef = useRef(null);
   const consumedProducerIdsRef = useRef(new Set());
@@ -26,6 +29,14 @@ function StaffPage() {
   const currentRoomIdRef = useRef('');
   const hasLeftRef = useRef(false);
   const tileVideoRefs = useRef(new Map());
+  const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
+  const joinedName = roomInfo.split(' | ')[1]?.replace('Staff: ', '') || '';
+  const { messages, presence, connected: chatConnected, chatError, sendMessage } = useRoomChat({
+    enabled: joined,
+    roomId: joinedRoomId,
+    name: joinedName,
+    role: 'staff',
+  });
 
   useEffect(() => {
     refreshRooms();
@@ -256,6 +267,8 @@ function StaffPage() {
       setJoined(false);
       setRoomInfo('');
       setStatus({ state: 'idle', text: 'Refresh rooms to begin.' });
+      setChatDraft('');
+      setChatRecipient('all');
     }
   }
 
@@ -270,6 +283,22 @@ function StaffPage() {
     tileVideoRefs.current.clear();
     setTiles([]);
     setSidebarOpen(true);
+  }
+
+  async function handleSendChatMessage() {
+    const text = chatDraft.trim();
+    if (!text) return;
+
+    try {
+      await sendMessage({
+        text,
+        recipientMode: chatRecipient === 'all' ? 'all' : 'student',
+        recipientName: chatRecipient === 'all' ? null : chatRecipient,
+      });
+      setChatDraft('');
+    } catch (err) {
+      setError(err.message || 'Failed to send chat message.');
+    }
   }
 
   return (
@@ -295,6 +324,15 @@ function StaffPage() {
           rooms={rooms}
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
+          chatConnected={chatConnected}
+          chatDraft={chatDraft}
+          chatError={chatError}
+          chatRecipient={chatRecipient}
+          messages={messages}
+          presence={presence}
+          sendChatMessage={handleSendChatMessage}
+          setChatDraft={setChatDraft}
+          setChatRecipient={setChatRecipient}
           timeRemaining={formatTimeRemaining(timeRemainingSeconds)}
           tileVideoRefs={tileVideoRefs}
           tiles={tiles}
