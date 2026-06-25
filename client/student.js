@@ -60,7 +60,9 @@ async function onJoin() {
     ...result.transport,
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
   });
-
+  
+  console.log(sendTransport);
+  console.log(sendTransport);
   sendTransport.on('connectionstatechange', state => {
     console.log('transport connection state:', state);
     switch (state) {
