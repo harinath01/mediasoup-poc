@@ -405,7 +405,7 @@ function AlertsPanel({ isOpen, setIsOpen }) {
       <div className="flex items-center justify-between px-6 py-5">
         <button className="flex items-center gap-3" onClick={() => setIsOpen(current => !current)} type="button">
           <ChevronDownIcon className={isOpen ? '' : '-rotate-90'} />
-          <h3 className="text-[1.05rem] font-extrabold uppercase tracking-[0.08em] text-white/80">Recent Alerts</h3>
+          <h3 className="text-[0.88rem] font-bold uppercase tracking-[0.12em] text-white/70">Recent Alerts</h3>
           <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#4a2a33] px-2 text-sm font-bold text-[#ff8386]">3</span>
         </button>
       </div>
@@ -433,7 +433,7 @@ function PriorityQueuePanel({ isOpen, setIsOpen }) {
       <div className="flex items-center justify-between px-6 py-5">
         <button className="flex items-center gap-3" onClick={() => setIsOpen(current => !current)} type="button">
           <ChevronDownIcon className={isOpen ? '' : '-rotate-90'} />
-          <h3 className="text-[1.05rem] font-extrabold uppercase tracking-[0.08em] text-white/80">Priority Queue</h3>
+          <h3 className="text-[0.88rem] font-bold uppercase tracking-[0.12em] text-white/70">Priority Queue</h3>
           <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-primary/25 px-2 text-sm font-bold text-primary">2</span>
         </button>
         <FilterIcon />
@@ -469,7 +469,7 @@ function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient,
   return (
     <section className="min-h-0 flex flex-1 flex-col">
       <div className="px-6 py-5">
-        <div className="flex items-center gap-3 text-[1.05rem] font-extrabold uppercase tracking-[0.08em] text-white/80">
+        <div className="flex items-center gap-3 text-[0.88rem] font-bold uppercase tracking-[0.12em] text-white/70">
           <span>Room Chat</span>
           <span className="rounded-md bg-primary/20 px-3 py-1 text-primary">{presence.students.length} Students</span>
         </div>
