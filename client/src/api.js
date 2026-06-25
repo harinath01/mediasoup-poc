@@ -4,8 +4,15 @@ export async function apiCall(method, path, body) {
     opts.headers = { 'Content-Type': 'application/json' };
     opts.body = JSON.stringify(body);
   }
+
   const res = await fetch(path, opts);
-  return res.json();
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data?.error || 'Request failed');
+  }
+
+  return data;
 }
 
 export function sendJsonBeacon(path, body) {
