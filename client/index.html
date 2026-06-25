@@ -8,40 +8,126 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f5f5;
+      background:
+        radial-gradient(circle at top, rgba(74, 144, 217, 0.16), transparent 38%),
+        linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
+      color: #1f2937;
     }
     .card {
-      background: #fff;
+      background: rgba(255, 255, 255, 0.96);
       padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      border-radius: 20px;
+      box-shadow: 0 22px 50px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.18);
       display: flex;
       flex-direction: column;
-      gap: .75rem;
-      width: 320px;
-      text-align: center;
+      gap: 1rem;
+      width: 360px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      width: fit-content;
+      padding: .35rem .7rem;
+      border-radius: 999px;
+      background: #e8f1fb;
+      color: #245d96;
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    h2 {
+      font-size: 1.6rem;
+      line-height: 1.2;
+    }
+    .subline {
+      color: #64748b;
+      font-size: .95rem;
+      line-height: 1.5;
     }
     a {
-      display: block;
-      padding: .75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      padding: .95rem 1rem;
+      text-decoration: none;
+      border-radius: 12px;
+      font-size: .95rem;
+      font-weight: 600;
+      transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    }
+    a:hover {
+      transform: translateY(-1px);
+    }
+    .cta-primary {
       background: #4a90d9;
       color: #fff;
-      text-decoration: none;
-      border-radius: 6px;
-      font-size: .9rem;
+      box-shadow: 0 10px 24px rgba(74, 144, 217, 0.28);
     }
-    a:hover { background: #357abd; }
+    .cta-primary:hover {
+      background: #357abd;
+    }
+    .cta-secondary {
+      background: #fff;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+    }
+    .cta-secondary:hover {
+      border-color: #94a3b8;
+      box-shadow: 0 10px 24px rgba(148, 163, 184, 0.16);
+    }
+    .cta-copy {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+    }
+    .icon {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .cta-primary .icon {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .cta-secondary .icon {
+      background: #eef2f7;
+    }
+    .arrow {
+      font-size: 1rem;
+      opacity: .75;
+    }
   </style>
 </head>
 <body>
   <div class="card">
+    <span class="eyebrow">Live Monitoring</span>
     <h2>mediasoup POC</h2>
-    <a href="student.html">Join as Student</a>
-    <a href="staff.html">Join as Staff</a>
+    <p class="subline">Live Proctoring Session</p>
+    <a class="cta-primary" href="student.html">
+      <span class="cta-copy">
+        <span class="icon">🎓</span>
+        <span>Join as Student</span>
+      </span>
+      <span class="arrow">→</span>
+    </a>
+    <a class="cta-secondary" href="staff.html">
+      <span class="cta-copy">
+        <span class="icon">🛡️</span>
+        <span>Join as Staff</span>
+      </span>
+      <span class="arrow">→</span>
+    </a>
   </div>
 </body>
 </html>
