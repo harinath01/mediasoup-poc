@@ -7,7 +7,7 @@ function LandingPage() {
   return (
     <AppShell>
       <div className="mb-5 text-center">
-        <h1 className="m-0 text-[1.55rem] font-extrabold tracking-brand text-primary">ProctorLive</h1>
+        <h1 className="m-0 text-[1.55rem] font-extrabold tracking-brand text-primary">TPSentinel</h1>
       </div>
 
       <section className={`${cardClass} max-w-[500px]`}>

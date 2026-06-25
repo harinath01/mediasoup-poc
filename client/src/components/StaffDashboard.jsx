@@ -101,7 +101,7 @@ function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
           <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/15 text-primary">
             <ShieldIcon />
           </div>
-          <div className="text-[1.15rem] font-bold tracking-[-0.03em]">ProctorLive</div>
+          <div className="text-[1.15rem] font-bold tracking-[-0.03em]">TPSentinel</div>
         </div>
         <div className="hidden h-8 w-px bg-white/10 xl:block" />
         <div>
