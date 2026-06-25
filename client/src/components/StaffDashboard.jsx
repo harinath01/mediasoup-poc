@@ -416,24 +416,19 @@ function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient,
           <span>Room Chat</span>
           <span className="rounded-md bg-primary/20 px-3 py-1 text-primary">{presence.students.length} Students</span>
         </div>
-        <button className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl bg-white/[0.16] px-4 py-4 text-base font-extrabold uppercase tracking-tight text-white transition hover:bg-white/[0.22]" type="button">
-          <BroadcastIcon />
-          {presence.staff.length ? `${presence.staff.join(', ')} Online` : 'Broadcast to All'}
-        </button>
-        <div className="mt-4">
-          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-white/45">Send To</label>
-          <select
-            className="w-full rounded-xl border border-white/[0.08] bg-[#101018] px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-primary/80"
-            value={chatRecipient}
-            onChange={event => setChatRecipient(event.target.value)}
-          >
-            <option value="all">Broadcast to all students</option>
+        <div className="mt-5">
+          <div className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-white/45">Send To</div>
+          <div className="flex flex-wrap gap-2">
+            <ChatTargetButton active={chatRecipient === 'all'} label="Broadcast" onClick={() => setChatRecipient('all')} />
             {presence.students.map(studentName => (
-              <option key={studentName} value={studentName}>
-                {studentName}
-              </option>
+              <ChatTargetButton
+                key={studentName}
+                active={chatRecipient === studentName}
+                label={studentName}
+                onClick={() => setChatRecipient(studentName)}
+              />
             ))}
-          </select>
+          </div>
         </div>
       </div>
 
@@ -488,7 +483,19 @@ function VolumeIcon({ className = 'h-6 w-6' }) { return <svg className={classNam
 function ChevronDownIcon({ className = '' }) { return <svg className={`h-4 w-4 text-white/60 transition ${className}`.trim()} viewBox="0 0 24 24" fill="none"><path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function AlertIcon() { return <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"><path d="M4 6h12v12H4zM16 10l4-2v8l-4-2" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="m2 2 20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>; }
 function FilterIcon() { return <svg className="h-5 w-5 text-white/55" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M7 12h10M10 17h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
-function BroadcastIcon() { return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none"><path d="M4 9h4l5-4v14l-5-4H4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M16 9.5a4 4 0 0 1 0 5M18.5 7a7.5 7.5 0 0 1 0 10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>; }
 function SendIcon() { return <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none"><path d="M4 20 20 12 4 4l3 8-3 8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M7 12h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
+function ChatTargetButton({ active, label, onClick }) {
+  return (
+    <button
+      className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
+        active ? 'border-primary bg-primary text-white shadow-action' : 'border-white/[0.08] bg-white/[0.04] text-white/72 hover:bg-white/[0.08] hover:text-white'
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
 
 export default StaffDashboard;
