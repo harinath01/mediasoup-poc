@@ -136,7 +136,11 @@ function StudentPage() {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+        video: {
+          width: { ideal: 960, max: 1280 },
+          height: { ideal: 540, max: 720 },
+          frameRate: { ideal: 15, max: 20 },
+        },
       });
 
       localStreamRef.current = stream;
@@ -204,7 +208,9 @@ function StudentPage() {
       }
 
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: {
+          frameRate: { ideal: 5, max: 8 },
+        },
         audio: false,
       });
 
