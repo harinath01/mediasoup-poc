@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getOrCreateRoom, routers, transports, producers } from '../rooms.js';
+import { cleanupTransport, getOrCreateRoom, routers, registerTransport, transports, producers } from '../rooms.js';
 import { getOrCreateRoomRouter, createWebRtcTransport } from '../utils.js';
 
 const router = Router();
@@ -23,7 +23,11 @@ router.post('/api/staff/join', async (req: Request, res: Response) => {
   }
 
   const transport = await createWebRtcTransport(roomRouter);
-  transports.set(transport.id, transport);
+  registerTransport(transport, {
+    roomId,
+    participantName: name,
+    role: 'staff',
+  });
 
   console.log(`[staff join] room=${roomId}, name=${name}, transport=${transport.id}`);
 
@@ -48,13 +52,13 @@ router.post('/api/staff/connect-transport', async (req: Request, res: Response) 
     return;
   }
 
-  const transport = transports.get(transportId);
-  if (!transport) {
+  const transportEntry = transports.get(transportId);
+  if (!transportEntry) {
     res.status(404).json({ error: 'transport not found' });
     return;
   }
 
-  await transport.connect({ dtlsParameters });
+  await transportEntry.transport.connect({ dtlsParameters });
   console.log(`[staff connect-transport] transport=${transportId}`);
   res.json({ ok: true });
 });
@@ -70,8 +74,8 @@ router.get('/api/staff/room/:roomId/producers', (req: Request, res: Response) =>
   const roomProducers = Array.from(producers.values())
     .filter(p => p.roomId === roomId)
     .map(p => ({
-      id: p.transport.id,
-      kind: p.transport.kind,
+      id: p.producer.id,
+      kind: p.producer.kind,
       studentName: p.studentName,
     }));
 
@@ -85,13 +89,13 @@ router.post('/api/staff/consume', async (req: Request, res: Response) => {
     return;
   }
 
-  const transport = transports.get(transportId);
-  if (!transport) {
+  const transportEntry = transports.get(transportId);
+  if (!transportEntry) {
     res.status(404).json({ error: 'transport not found' });
     return;
   }
 
-  const consumer = await transport.consume({ producerId, rtpCapabilities });
+  const consumer = await transportEntry.transport.consume({ producerId, rtpCapabilities });
   console.log(`[consume] transport=${transportId}, producer=${producerId}, consumer=${consumer.id}`);
 
   res.json({
@@ -101,6 +105,17 @@ router.post('/api/staff/consume', async (req: Request, res: Response) => {
     rtpParameters: consumer.rtpParameters,
     type: consumer.type,
   });
+});
+
+router.post('/api/staff/leave', (req: Request, res: Response) => {
+  const { transportId } = req.body;
+  if (!transportId) {
+    res.status(400).json({ error: 'transportId is required' });
+    return;
+  }
+
+  cleanupTransport(transportId);
+  res.json({ ok: true });
 });
 
 export default router;

@@ -1,10 +1,11 @@
-import { apiCall } from './api.js';
+import { apiCall, sendJsonBeacon } from './api.js';
 import * as mediasoupClient from 'mediasoup-client';
 
 let sendTransport = null;
 let currentName = '';
 let currentRoomId = '';
 let localStream = null;
+let hasLeft = false;
 
 function setStatus(state, text) {
   const bar = document.getElementById('statusBar');
@@ -45,6 +46,7 @@ async function onJoin() {
 
   currentName = name;
   currentRoomId = roomId;
+  hasLeft = false;
 
   const result = await apiCall('POST', '/api/students/join', { name, roomId });
   console.log('student join payload:', JSON.stringify(result, null, 2));
@@ -122,6 +124,62 @@ async function onJoin() {
   }
 }
 
+function resetUi() {
+  const localVideo = document.getElementById('localVideo');
+  if (localVideo) {
+    localVideo.srcObject = null;
+  }
+
+  document.getElementById('activeCard').classList.add('hidden');
+  document.getElementById('joinCard').classList.remove('hidden');
+  setStatus('connecting', 'Initializing...');
+  document.getElementById('roomInfo').textContent = '';
+}
+
+function cleanupLocalMedia() {
+  if (!localStream) return;
+
+  for (const track of localStream.getTracks()) {
+    track.stop();
+  }
+  localStream = null;
+}
+
+function closeTransport() {
+  if (!sendTransport) return;
+
+  sendTransport.close();
+  sendTransport = null;
+}
+
+async function leaveRoom() {
+  if (hasLeft || !sendTransport) return;
+  hasLeft = true;
+
+  try {
+    await apiCall('POST', '/api/students/leave', { transportId: sendTransport.id });
+  } catch (err) {
+    console.error('failed to leave room', err);
+  }
+
+  cleanupLocalMedia();
+  closeTransport();
+  currentName = '';
+  currentRoomId = '';
+  resetUi();
+}
+
+function leaveSession() {
+  if (hasLeft || !sendTransport) return;
+  hasLeft = true;
+
+  sendJsonBeacon('/api/students/leave', { transportId: sendTransport.id });
+  cleanupLocalMedia();
+  closeTransport();
+}
+
 window.onJoin = onJoin;
 window.toggleMic = toggleMic;
 window.toggleCam = toggleCam;
+window.leaveRoom = leaveRoom;
+window.addEventListener('pagehide', leaveSession);

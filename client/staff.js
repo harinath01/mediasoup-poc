@@ -1,4 +1,4 @@
-import { apiCall } from './api.js';
+import { apiCall, sendJsonBeacon } from './api.js';
 import * as mediasoupClient from 'mediasoup-client';
 
 let device = null;
@@ -8,6 +8,7 @@ let currentName = '';
 let consumedProducerIds = new Set();
 let pollInterval = null;
 let streams = {};
+let hasLeft = false;
 
 function setStatus(state, text) {
   const bar = document.getElementById('statusBar');
@@ -199,7 +200,21 @@ async function onJoinRoom(roomId) {
   setStatus('connected', 'Monitoring Active');
 }
 
+function leaveSession() {
+  if (hasLeft || !recvTransport) return;
+  hasLeft = true;
+
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+
+  sendJsonBeacon('/api/staff/leave', { transportId: recvTransport.id });
+  recvTransport.close();
+}
+
 window.onRefresh = onRefresh;
 window.onJoinRoom = onJoinRoom;
+window.addEventListener('pagehide', leaveSession);
 
 onRefresh();

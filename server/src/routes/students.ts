@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getOrCreateRoom, transports, producers } from '../rooms.js';
+import { cleanupTransport, getOrCreateRoom, registerProducer, registerTransport, transports } from '../rooms.js';
 import { getOrCreateRoomRouter, createWebRtcTransport } from '../utils.js';
 
 const router = Router();
@@ -18,7 +18,11 @@ router.post('/api/students/join', async (req: Request, res: Response) => {
 
   const roomRouter = await getOrCreateRoomRouter(roomId);
   const transport = await createWebRtcTransport(roomRouter);
-  transports.set(transport.id, transport);
+  registerTransport(transport, {
+    roomId,
+    participantName: name,
+    role: 'student',
+  });
 
   console.log(`[student join] room=${roomId}, name=${name}, transport=${transport.id}`);
 
@@ -43,13 +47,13 @@ router.post('/api/students/connect-transport', async (req: Request, res: Respons
     return;
   }
 
-  const transport = transports.get(transportId);
-  if (!transport) {
+  const transportEntry = transports.get(transportId);
+  if (!transportEntry) {
     res.status(404).json({ error: 'transport not found' });
     return;
   }
 
-  await transport.connect({ dtlsParameters });
+  await transportEntry.transport.connect({ dtlsParameters });
   console.log(`[connect-transport] transport=${transportId}`);
   res.json({ ok: true });
 });
@@ -61,21 +65,32 @@ router.post('/api/students/produce', async (req: Request, res: Response) => {
     return;
   }
 
-  const transport = transports.get(transportId);
-  if (!transport) {
+  const transportEntry = transports.get(transportId);
+  if (!transportEntry) {
     res.status(404).json({ error: 'transport not found' });
     return;
   }
 
-  const producer = await transport.produce({ kind, rtpParameters });
-  producers.set(producer.id, {
-    transport: producer,
+  const producer = await transportEntry.transport.produce({ kind, rtpParameters });
+  registerProducer(producer, {
+    transportId,
     roomId: roomId || '',
     studentName: name || 'unknown',
   });
 
   console.log(`[produce] transport=${transportId}, kind=${kind}, producer=${producer.id}`);
   res.json({ id: producer.id });
+});
+
+router.post('/api/students/leave', (req: Request, res: Response) => {
+  const { transportId } = req.body;
+  if (!transportId) {
+    res.status(400).json({ error: 'transportId is required' });
+    return;
+  }
+
+  cleanupTransport(transportId);
+  res.json({ ok: true });
 });
 
 export default router;
