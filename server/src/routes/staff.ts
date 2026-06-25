@@ -77,6 +77,8 @@ router.get('/api/staff/room/:roomId/producers', (req: Request, res: Response) =>
       id: p.producer.id,
       kind: p.producer.kind,
       studentName: p.studentName,
+      sourceType: p.sourceType,
+      displayLabel: p.displayLabel || null,
     }));
 
   res.json(roomProducers);

@@ -59,9 +59,14 @@ router.post('/api/students/connect-transport', async (req: Request, res: Respons
 });
 
 router.post('/api/students/produce', async (req: Request, res: Response) => {
-  const { transportId, kind, rtpParameters, name, roomId } = req.body;
+  const { transportId, kind, rtpParameters, name, roomId, sourceType, displayLabel } = req.body;
   if (!transportId || !kind || !rtpParameters) {
     res.status(400).json({ error: 'transportId, kind, and rtpParameters are required' });
+    return;
+  }
+
+  if (sourceType && sourceType !== 'camera' && sourceType !== 'screen') {
+    res.status(400).json({ error: 'sourceType must be camera or screen' });
     return;
   }
 
@@ -76,9 +81,11 @@ router.post('/api/students/produce', async (req: Request, res: Response) => {
     transportId,
     roomId: roomId || '',
     studentName: name || 'unknown',
+    sourceType: sourceType || 'camera',
+    displayLabel: displayLabel || undefined,
   });
 
-  console.log(`[produce] transport=${transportId}, kind=${kind}, producer=${producer.id}`);
+  console.log(`[produce] transport=${transportId}, kind=${kind}, source=${sourceType || 'camera'}, producer=${producer.id}`);
   res.json({ id: producer.id });
 });
 

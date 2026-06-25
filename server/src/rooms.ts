@@ -8,6 +8,7 @@ export interface Room {
 }
 
 type ParticipantRole = 'student' | 'staff';
+export type ProducerSourceType = 'camera' | 'screen';
 
 interface TransportEntry {
   transport: mediasoupTypes.WebRtcTransport;
@@ -21,6 +22,8 @@ interface ProducerEntry {
   transportId: string;
   roomId: string;
   studentName: string;
+  sourceType: ProducerSourceType;
+  displayLabel?: string;
 }
 
 const rooms = new Map<string, Room>();

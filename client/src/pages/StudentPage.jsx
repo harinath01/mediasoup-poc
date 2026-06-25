@@ -15,6 +15,7 @@ function StudentPage() {
   const [roomInfo, setRoomInfo] = useState('');
   const [micEnabled, setMicEnabled] = useState(true);
   const [camEnabled, setCamEnabled] = useState(true);
+  const [screenSharing, setScreenSharing] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
@@ -22,6 +23,12 @@ function StudentPage() {
   const localVideoRef = useRef(null);
   const sendTransportRef = useRef(null);
   const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
+  const producersRef = useRef({
+    cameraAudio: null,
+    cameraVideo: null,
+    screenVideo: null,
+  });
   const hasLeftRef = useRef(false);
   const activeSessionRef = useRef({ name: '', roomId: '' });
   const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
@@ -110,7 +117,7 @@ function StudentPage() {
         }).then(callback).catch(errback);
       });
 
-      sendTransport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
+      sendTransport.on('produce', async ({ kind, rtpParameters, appData }, callback, errback) => {
         try {
           const { id } = await apiCall('POST', '/api/students/produce', {
             transportId: sendTransport.id,
@@ -118,6 +125,8 @@ function StudentPage() {
             rtpParameters,
             name: activeSessionRef.current.name,
             roomId: activeSessionRef.current.roomId,
+            sourceType: appData?.sourceType || 'camera',
+            displayLabel: appData?.displayLabel || null,
           });
           callback({ id });
         } catch (err) {
@@ -135,10 +144,7 @@ function StudentPage() {
       setMicEnabled(true);
       setCamEnabled(true);
       setStatus({ state: 'connecting', text: 'Publishing media...' });
-
-      for (const track of stream.getTracks()) {
-        await sendTransport.produce({ track });
-      }
+      await publishCameraTracks(stream);
     } catch (err) {
       setError(err.message || 'Failed to join room.');
       setStatus({ state: 'failed', text: 'Connection Failed' });
@@ -160,6 +166,102 @@ function StudentPage() {
     if (!track) return;
     track.enabled = !track.enabled;
     setCamEnabled(track.enabled);
+  }
+
+  async function publishCameraTracks(stream) {
+    const transport = sendTransportRef.current;
+    if (!transport) return;
+
+    const audioTrack = stream.getAudioTracks()[0];
+    const videoTrack = stream.getVideoTracks()[0];
+
+    if (audioTrack && !producersRef.current.cameraAudio) {
+      producersRef.current.cameraAudio = await transport.produce({
+        track: audioTrack,
+        appData: { sourceType: 'camera', displayLabel: 'Microphone' },
+      });
+    }
+
+    if (videoTrack && !producersRef.current.cameraVideo) {
+      producersRef.current.cameraVideo = await transport.produce({
+        track: videoTrack,
+        appData: { sourceType: 'camera', displayLabel: 'Camera' },
+      });
+    }
+  }
+
+  async function startScreenShare() {
+    if (screenSharing) return;
+
+    try {
+      setError('');
+      setStatus({ state: 'connecting', text: 'Requesting screen share...' });
+
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        setStatus({ state: 'connected', text: 'Proctoring Active' });
+        setError('Screen sharing is not supported in this browser.');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack) {
+        stopScreenShare();
+        return;
+      }
+
+      screenStreamRef.current = stream;
+      videoTrack.addEventListener('ended', () => {
+        stopScreenShare();
+      }, { once: true });
+
+      const transport = sendTransportRef.current;
+      if (!transport) {
+        stopScreenShare();
+        return;
+      }
+
+      producersRef.current.screenVideo = await transport.produce({
+        track: videoTrack,
+        appData: {
+          sourceType: 'screen',
+          displayLabel: videoTrack.label || 'Screen Share',
+        },
+      });
+
+      setScreenSharing(true);
+      setStatus({ state: 'connected', text: 'Proctoring Active' });
+    } catch (err) {
+      setStatus({ state: 'connected', text: 'Proctoring Active' });
+
+      if (err?.name === 'NotAllowedError') {
+        setError('Screen sharing permission was denied.');
+        return;
+      }
+
+      setError(err.message || 'Failed to start screen share.');
+    }
+  }
+
+  function stopScreenShare() {
+    if (producersRef.current.screenVideo) {
+      producersRef.current.screenVideo.close();
+      producersRef.current.screenVideo = null;
+    }
+
+    const screenStream = screenStreamRef.current;
+    if (screenStream) {
+      for (const track of screenStream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    screenStreamRef.current = null;
+    setScreenSharing(false);
   }
 
   async function leaveRoom() {
@@ -201,12 +303,18 @@ function StudentPage() {
 
     localStreamRef.current = null;
     setLocalStream(null);
+    stopScreenShare();
   }
 
   function closeStudentTransport() {
     if (!sendTransportRef.current) return;
     sendTransportRef.current.close();
     sendTransportRef.current = null;
+    producersRef.current = {
+      cameraAudio: null,
+      cameraVideo: null,
+      screenVideo: null,
+    };
   }
 
   function resetStudentUi() {
@@ -216,6 +324,7 @@ function StudentPage() {
     setStatus({ state: 'idle', text: STATUS_COPY.idle });
     setMicEnabled(true);
     setCamEnabled(true);
+    setScreenSharing(false);
     setChatOpen(false);
     setChatDraft('');
   }
@@ -309,7 +418,7 @@ function StudentPage() {
             </div>
 
             <div className="mt-8 flex items-center justify-between border-t border-white/[0.08] pt-4">
-              <div className="flex items-center gap-5">
+              <div className="flex flex-wrap items-center gap-5">
                 <button className="flex items-center gap-2 text-white/75 transition hover:text-white" onClick={toggleMic} type="button">
                   {micEnabled ? <MicInlineIcon /> : <MicOffInlineIcon />}
                   <span className="text-[0.95rem] font-semibold">{micEnabled ? 'Mute' : 'Unmute'}</span>
@@ -318,6 +427,11 @@ function StudentPage() {
                 <button className="flex items-center gap-2 text-white/75 transition hover:text-white" onClick={toggleCam} type="button">
                   {camEnabled ? <CameraInlineIcon /> : <CameraOffInlineIcon />}
                   <span className="text-[0.95rem] font-semibold">{camEnabled ? 'Stop Camera' : 'Start Camera'}</span>
+                </button>
+
+                <button className="flex items-center gap-2 text-white/75 transition hover:text-white" onClick={screenSharing ? stopScreenShare : startScreenShare} type="button">
+                  {screenSharing ? <StopScreenIcon /> : <ScreenShareIcon />}
+                  <span className="text-[0.95rem] font-semibold">{screenSharing ? 'Stop Share' : 'Share Screen'}</span>
                 </button>
               </div>
 
@@ -370,6 +484,7 @@ function StudentPage() {
                             {message.text}
                           </div>
                           {!ownMessage && message.recipientMode === 'student' ? <span className="mt-1 text-[11px] uppercase tracking-[0.08em] text-primary/80">Direct message</span> : null}
+                          {!ownMessage && message.recipientMode === 'all' ? <span className="mt-1 text-[11px] uppercase tracking-[0.08em] text-white/55">Broadcast message</span> : null}
                         </div>
                       );
                     }) : (
@@ -403,7 +518,7 @@ function StudentPage() {
           </div>
 
           <p className="mt-8 text-center text-sm font-medium tracking-[0.02em] text-white/30">
-            Session is being recorded for academic integrity.
+            {screenSharing ? 'Screen sharing is active for this session.' : 'Session is being recorded for academic integrity.'}
           </p>
 
           <div className="mt-4 text-center">
@@ -469,6 +584,26 @@ function ChatIcon() {
   return (
     <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M7 18H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4 4v-4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ScreenShareIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3.5" y="5.5" width="17" height="11" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 19v-3M8.5 19h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="m9 10 3-3 3 3M12 7v7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function StopScreenIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3.5" y="5.5" width="17" height="11" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 19v-3M8.5 19h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="9" y="8.5" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }

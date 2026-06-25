@@ -23,12 +23,14 @@ function StaffPage() {
   const [chatRecipient, setChatRecipient] = useState('all');
   const recvTransportRef = useRef(null);
   const deviceRef = useRef(null);
-  const consumedProducerIdsRef = useRef(new Set());
   const streamMapRef = useRef(new Map());
+  const producerMapRef = useRef(new Map());
+  const consumerMapRef = useRef(new Map());
   const pollIntervalRef = useRef(null);
   const currentRoomIdRef = useRef('');
   const hasLeftRef = useRef(false);
   const tileVideoRefs = useRef(new Map());
+  const tilesRef = useRef([]);
   const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
   const joinedName = roomInfo.split(' | ')[1]?.replace('Staff: ', '') || '';
   const { messages, presence, connected: chatConnected, chatError, sendMessage } = useRoomChat({
@@ -49,6 +51,10 @@ function StaffPage() {
         video.srcObject = tile.stream;
       }
     }
+  }, [tiles]);
+
+  useEffect(() => {
+    tilesRef.current = tiles;
   }, [tiles]);
 
   useEffect(() => {
@@ -118,7 +124,6 @@ function StaffPage() {
       recvTransportRef.current = recvTransport;
       setJoined(true);
       setRoomInfo(`Room: ${result.roomId} | Staff: ${result.name}`);
-      consumedProducerIdsRef.current = new Set();
       clearTiles();
 
       recvTransport.on('connectionstatechange', state => {
@@ -149,10 +154,7 @@ function StaffPage() {
 
       setStatus({ state: 'connecting', text: 'Fetching producers...' });
       const producers = await apiCall('GET', `/api/staff/room/${roomId}/producers`);
-
-      for (const producer of producers) {
-        await consumeProducer(producer);
-      }
+      await syncRoomProducers(producers);
 
       pollIntervalRef.current = window.setInterval(pollNewProducers, 3000);
       setStatus({ state: 'connected', text: 'Monitoring Active' });
@@ -163,42 +165,192 @@ function StaffPage() {
     }
   }
 
-  async function consumeProducer(producer) {
-    if (!recvTransportRef.current || !deviceRef.current) return;
-    if (consumedProducerIdsRef.current.has(producer.id)) return;
+  function buildProducerMap(producers) {
+    const nextMap = new Map();
 
-    consumedProducerIdsRef.current.add(producer.id);
-    setStatus({ state: 'connecting', text: `Consuming ${producer.kind} from ${producer.studentName}...` });
+    for (const producer of producers) {
+      const current = nextMap.get(producer.studentName) || {
+        cameraVideo: null,
+        cameraAudio: null,
+        screenVideo: null,
+        screenAudio: null,
+      };
+
+      if (producer.sourceType === 'screen' && producer.kind === 'video') current.screenVideo = producer;
+      if (producer.sourceType === 'screen' && producer.kind === 'audio') current.screenAudio = producer;
+      if (producer.sourceType === 'camera' && producer.kind === 'video') current.cameraVideo = producer;
+      if (producer.sourceType === 'camera' && producer.kind === 'audio') current.cameraAudio = producer;
+
+      nextMap.set(producer.studentName, current);
+    }
+
+    return nextMap;
+  }
+
+  function buildNextTiles(currentTiles, nextProducerMap) {
+    const currentTileMap = new Map(currentTiles.map(tile => [tile.studentName, tile]));
+    const nextTiles = [];
+
+    for (const [studentName, producerInfo] of nextProducerMap.entries()) {
+      const existingTile = currentTileMap.get(studentName);
+      let stream = streamMapRef.current.get(studentName);
+      if (!stream) {
+        stream = new MediaStream();
+        streamMapRef.current.set(studentName, stream);
+      }
+
+      const availableSourceTypes = [];
+      if (producerInfo.cameraVideo) availableSourceTypes.push('camera');
+      if (producerInfo.screenVideo) availableSourceTypes.push('screen');
+
+      const activeSourceType = availableSourceTypes.includes(existingTile?.activeSourceType)
+        ? existingTile.activeSourceType
+        : availableSourceTypes.includes('camera')
+          ? 'camera'
+          : availableSourceTypes[0] || 'camera';
+
+      nextTiles.push({
+        studentName,
+        stream,
+        audioEnabled: existingTile?.audioEnabled ?? false,
+        activeSourceType,
+        availableSourceTypes,
+        displayLabel:
+          activeSourceType === 'screen'
+            ? producerInfo.screenVideo?.displayLabel || 'Screen'
+            : producerInfo.cameraVideo?.displayLabel || 'Camera',
+      });
+    }
+
+    return nextTiles;
+  }
+
+  async function createConsumer(producerId) {
+    const transport = recvTransportRef.current;
+    const device = deviceRef.current;
+    if (!transport || !device) return null;
 
     const consumerData = await apiCall('POST', '/api/staff/consume', {
-      transportId: recvTransportRef.current.id,
-      producerId: producer.id,
-      rtpCapabilities: deviceRef.current.rtpCapabilities,
+      transportId: transport.id,
+      producerId,
+      rtpCapabilities: device.rtpCapabilities,
     });
 
-    const consumer = await recvTransportRef.current.consume({
+    return transport.consume({
       id: consumerData.id,
       producerId: consumerData.producerId,
       kind: consumerData.kind,
       rtpParameters: consumerData.rtpParameters,
     });
+  }
 
-    let stream = streamMapRef.current.get(producer.studentName);
-    if (!stream) {
-      stream = new MediaStream();
-      streamMapRef.current.set(producer.studentName, stream);
+  function removeStreamTrack(studentName, kind) {
+    const stream = streamMapRef.current.get(studentName);
+    if (!stream) return;
+
+    for (const track of [...stream.getTracks()]) {
+      if (track.kind === kind) {
+        stream.removeTrack(track);
+        track.stop();
+      }
     }
+  }
 
-    stream.addTrack(consumer.track);
+  async function syncStudentConsumers(tile, producerInfo) {
+    const desiredVideoProducer =
+      tile.activeSourceType === 'screen'
+        ? producerInfo.screenVideo || producerInfo.cameraVideo
+        : producerInfo.cameraVideo || producerInfo.screenVideo;
+    const desiredAudioProducer = producerInfo.cameraAudio || producerInfo.screenAudio;
 
-    setTiles(current => {
-      const existing = current.find(tile => tile.studentName === producer.studentName);
-      if (existing) {
-        return current.map(tile => (tile.studentName === producer.studentName ? { ...tile, stream } : tile));
+    const currentConsumerState = consumerMapRef.current.get(tile.studentName) || {
+      videoConsumer: null,
+      audioConsumer: null,
+      videoProducerId: null,
+      audioProducerId: null,
+    };
+
+    if (currentConsumerState.videoProducerId !== desiredVideoProducer?.id) {
+      if (currentConsumerState.videoConsumer) {
+        currentConsumerState.videoConsumer.close();
+        removeStreamTrack(tile.studentName, 'video');
       }
 
-      return [...current, { studentName: producer.studentName, stream, audioEnabled: false }];
-    });
+      currentConsumerState.videoConsumer = null;
+      currentConsumerState.videoProducerId = null;
+
+      if (desiredVideoProducer) {
+        setStatus({ state: 'connecting', text: `Consuming ${desiredVideoProducer.sourceType} video from ${tile.studentName}...` });
+        const consumer = await createConsumer(desiredVideoProducer.id);
+        if (consumer) {
+          currentConsumerState.videoConsumer = consumer;
+          currentConsumerState.videoProducerId = desiredVideoProducer.id;
+          tile.stream.addTrack(consumer.track);
+        }
+      }
+    }
+
+    if (currentConsumerState.audioProducerId !== desiredAudioProducer?.id) {
+      if (currentConsumerState.audioConsumer) {
+        currentConsumerState.audioConsumer.close();
+        removeStreamTrack(tile.studentName, 'audio');
+      }
+
+      currentConsumerState.audioConsumer = null;
+      currentConsumerState.audioProducerId = null;
+
+      if (desiredAudioProducer) {
+        const consumer = await createConsumer(desiredAudioProducer.id);
+        if (consumer) {
+          currentConsumerState.audioConsumer = consumer;
+          currentConsumerState.audioProducerId = desiredAudioProducer.id;
+          tile.stream.addTrack(consumer.track);
+        }
+      }
+    }
+
+    consumerMapRef.current.set(tile.studentName, currentConsumerState);
+  }
+
+  function removeStudentConsumption(studentName) {
+    const consumerState = consumerMapRef.current.get(studentName);
+    if (consumerState?.videoConsumer) consumerState.videoConsumer.close();
+    if (consumerState?.audioConsumer) consumerState.audioConsumer.close();
+    consumerMapRef.current.delete(studentName);
+
+    const stream = streamMapRef.current.get(studentName);
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        stream.removeTrack(track);
+        track.stop();
+      }
+      streamMapRef.current.delete(studentName);
+    }
+
+    tileVideoRefs.current.delete(studentName);
+  }
+
+  async function syncRoomProducers(producers) {
+    const nextProducerMap = buildProducerMap(producers);
+    producerMapRef.current = nextProducerMap;
+
+    const nextTiles = buildNextTiles(tilesRef.current, nextProducerMap);
+    const nextStudentNames = new Set(nextTiles.map(tile => tile.studentName));
+
+    for (const studentName of [...consumerMapRef.current.keys()]) {
+      if (!nextStudentNames.has(studentName)) {
+        removeStudentConsumption(studentName);
+      }
+    }
+
+    setTiles(nextTiles);
+
+    for (const tile of nextTiles) {
+      const producerInfo = nextProducerMap.get(tile.studentName);
+      if (producerInfo) {
+        await syncStudentConsumers(tile, producerInfo);
+      }
+    }
   }
 
   async function pollNewProducers() {
@@ -206,9 +358,7 @@ function StaffPage() {
 
     try {
       const producers = await apiCall('GET', `/api/staff/room/${currentRoomIdRef.current}/producers`);
-      for (const producer of producers) {
-        await consumeProducer(producer);
-      }
+      await syncRoomProducers(producers);
     } catch (err) {
       console.error('failed to poll producers', err);
     }
@@ -221,6 +371,31 @@ function StaffPage() {
         return { ...tile, audioEnabled: !tile.audioEnabled };
       })
     );
+  }
+
+  async function switchTileSource(studentName, sourceType) {
+    const nextTiles = tilesRef.current.map(tile => {
+      if (tile.studentName !== studentName) return tile;
+      if (!tile.availableSourceTypes.includes(sourceType)) return tile;
+
+      const producerInfo = producerMapRef.current.get(studentName);
+      return {
+        ...tile,
+        activeSourceType: sourceType,
+        displayLabel:
+          sourceType === 'screen'
+            ? producerInfo?.screenVideo?.displayLabel || 'Screen'
+            : producerInfo?.cameraVideo?.displayLabel || 'Camera',
+      };
+    });
+
+    setTiles(nextTiles);
+
+    const updatedTile = nextTiles.find(tile => tile.studentName === studentName);
+    const producerInfo = producerMapRef.current.get(studentName);
+    if (updatedTile && producerInfo) {
+      await syncStudentConsumers(updatedTile, producerInfo);
+    }
   }
 
   async function leaveRoom() {
@@ -258,9 +433,14 @@ function StaffPage() {
       recvTransportRef.current = null;
     }
 
-    consumedProducerIdsRef.current = new Set();
     currentRoomIdRef.current = '';
     deviceRef.current = null;
+    producerMapRef.current = new Map();
+
+    for (const studentName of [...consumerMapRef.current.keys()]) {
+      removeStudentConsumption(studentName);
+    }
+
     clearTiles();
 
     if (resetUi) {
@@ -280,6 +460,7 @@ function StaffPage() {
     }
 
     streamMapRef.current = new Map();
+    consumerMapRef.current = new Map();
     tileVideoRefs.current.clear();
     setTiles([]);
     setSidebarOpen(true);
@@ -337,6 +518,7 @@ function StaffPage() {
           tileVideoRefs={tileVideoRefs}
           tiles={tiles}
           toggleRemoteAudio={toggleRemoteAudio}
+          switchTileSource={switchTileSource}
           viewMode={viewMode}
           setViewMode={setViewMode}
         />

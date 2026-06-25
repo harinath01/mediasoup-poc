@@ -30,6 +30,7 @@ function StaffDashboard({
   error,
   leaveRoom,
   toggleRemoteAudio,
+  switchTileSource,
   viewMode,
   setViewMode,
   timeRemaining,
@@ -58,16 +59,16 @@ function StaffDashboard({
 
         <div className="min-h-0 flex-1 overflow-auto p-6">
           {viewMode === 'grid' ? (
-            <GridView tiles={tiles} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} />
+            <GridView tiles={tiles} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
           ) : viewMode === 'compact' ? (
-            <CompactView tiles={tiles} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} />
+            <CompactView tiles={tiles} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
           ) : (
             <>
               <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_360px]">
-                <PrimaryFeedTile tile={primaryTile} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} />
-                <SecondaryFeedStack tiles={secondaryTiles.slice(0, 2)} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} />
+                <PrimaryFeedTile tile={primaryTile} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
+                <SecondaryFeedStack tiles={secondaryTiles.slice(0, 2)} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
               </div>
-              <FeedGrid tiles={secondaryTiles.slice(2)} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} />
+              <FeedGrid tiles={secondaryTiles.slice(2)} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
             </>
           )}
         </div>
@@ -169,13 +170,13 @@ function DashboardToolbar({ studentCount, viewMode, setViewMode, sidebarOpen, se
   );
 }
 
-function PrimaryFeedTile({ tile, tileVideoRefs, toggleRemoteAudio }) {
+function PrimaryFeedTile({ tile, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
   if (!tile) {
     return <div className="flex aspect-[1.6/1] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
   }
 
   return (
-    <article className="relative aspect-[1.6/1] overflow-hidden rounded-2xl border border-white/[0.05] bg-black">
+    <article className="relative aspect-[1.6/1] overflow-hidden rounded-2xl border border-white/[0.05] bg-transparent">
       <video
         autoPlay
         playsInline
@@ -194,7 +195,9 @@ function PrimaryFeedTile({ tile, tileVideoRefs, toggleRemoteAudio }) {
       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/85 via-black/25 to-transparent px-5 pb-5 pt-16">
         <div>
           <div className="text-[2.1rem] font-bold tracking-[-0.03em] text-white">{tile.studentName}</div>
-          <div className="text-[1.1rem] text-white/70">Live feed</div>
+          <div className="mt-3">
+            <SourceSelector tile={tile} switchTileSource={switchTileSource} />
+          </div>
         </div>
         <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} size="lg" />
       </div>
@@ -202,11 +205,11 @@ function PrimaryFeedTile({ tile, tileVideoRefs, toggleRemoteAudio }) {
   );
 }
 
-function SecondaryFeedStack({ tiles, tileVideoRefs, toggleRemoteAudio }) {
+function SecondaryFeedStack({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
   return (
     <div className="grid gap-4">
       {tiles.map((tile, index) => (
-        <article className={`relative aspect-[1.6/1] overflow-hidden rounded-2xl border bg-[#24242c] ${index === 0 ? 'border-primary shadow-[0_0_0_2px_rgba(104,103,240,0.35)]' : 'border-white/[0.05]'}`} key={tile.studentName}>
+        <article className={`relative aspect-[1.6/1] overflow-hidden rounded-2xl border bg-transparent ${index === 0 ? 'border-primary shadow-[0_0_0_2px_rgba(104,103,240,0.35)]' : 'border-white/[0.05]'}`} key={tile.studentName}>
           <video
             autoPlay
             playsInline
@@ -223,9 +226,12 @@ function SecondaryFeedStack({ tiles, tileVideoRefs, toggleRemoteAudio }) {
             }}
           />
           <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 py-4">
-            <div className="flex items-center gap-3 text-[0.95rem] font-bold text-white">
-              <span className={`h-2.5 w-2.5 rounded-full ${index === 0 ? 'bg-emerald-400' : 'bg-white/20'}`} />
-              <span>{tile.studentName}</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 text-[0.95rem] font-bold text-white">
+                <span className={`h-2.5 w-2.5 rounded-full ${index === 0 ? 'bg-emerald-400' : 'bg-white/20'}`} />
+                <span>{tile.studentName}</span>
+              </div>
+              <SourceSelector tile={tile} switchTileSource={switchTileSource} compact />
             </div>
             <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
           </div>
@@ -235,13 +241,13 @@ function SecondaryFeedStack({ tiles, tileVideoRefs, toggleRemoteAudio }) {
   );
 }
 
-function FeedGrid({ tiles, tileVideoRefs, toggleRemoteAudio }) {
+function FeedGrid({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
   if (!tiles.length) return null;
 
   return (
     <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {tiles.map(tile => (
-        <article className="overflow-hidden rounded-2xl border border-white/[0.05] bg-white/[0.03]" key={tile.studentName}>
+        <article className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-transparent" key={tile.studentName}>
           <video
             autoPlay
             playsInline
@@ -257,9 +263,12 @@ function FeedGrid({ tiles, tileVideoRefs, toggleRemoteAudio }) {
               }
             }}
           />
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="text-base font-bold text-white">{tile.studentName}</div>
-            <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-10">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-base font-bold text-white">{tile.studentName}</div>
+              <SourceSelector tile={tile} switchTileSource={switchTileSource} />
+              <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
+            </div>
           </div>
         </article>
       ))}
@@ -267,7 +276,7 @@ function FeedGrid({ tiles, tileVideoRefs, toggleRemoteAudio }) {
   );
 }
 
-function GridView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
+function GridView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
   if (!tiles.length) {
     return <div className="flex h-full min-h-[280px] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
   }
@@ -275,7 +284,7 @@ function GridView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
   return (
     <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
       {tiles.map(tile => (
-        <article className="overflow-hidden rounded-2xl border border-white/[0.05] bg-black" key={tile.studentName}>
+        <article className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-transparent" key={tile.studentName}>
           <video
             autoPlay
             playsInline
@@ -291,9 +300,12 @@ function GridView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
               }
             }}
           />
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="text-base font-bold text-white">{tile.studentName}</div>
-            <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-10">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-base font-bold text-white">{tile.studentName}</div>
+              <SourceSelector tile={tile} switchTileSource={switchTileSource} />
+              <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
+            </div>
           </div>
         </article>
       ))}
@@ -301,7 +313,7 @@ function GridView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
   );
 }
 
-function CompactView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
+function CompactView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
   if (!tiles.length) {
     return <div className="flex h-full min-h-[280px] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
   }
@@ -309,7 +321,7 @@ function CompactView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
   return (
     <div className="grid gap-3 md:grid-cols-3 2xl:grid-cols-4">
       {tiles.map(tile => (
-        <article className="overflow-hidden rounded-xl border border-white/[0.05] bg-black" key={tile.studentName}>
+        <article className="relative overflow-hidden rounded-xl border border-white/[0.05] bg-transparent" key={tile.studentName}>
           <video
             autoPlay
             playsInline
@@ -325,12 +337,45 @@ function CompactView({ tiles, tileVideoRefs, toggleRemoteAudio }) {
               }
             }}
           />
-          <div className="flex items-center justify-between gap-2 px-3 py-2">
-            <div className="truncate text-sm font-bold text-white">{tile.studentName}</div>
-            <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} compact />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/52 to-transparent px-3 pb-2.5 pt-8">
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate text-sm font-bold text-white">{tile.studentName}</div>
+              <SourceSelector tile={tile} switchTileSource={switchTileSource} compact />
+              <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} compact />
+            </div>
           </div>
         </article>
       ))}
+    </div>
+  );
+}
+
+function SourceSelector({ tile, switchTileSource, compact = false }) {
+  const options = ['camera', 'screen'];
+
+  return (
+    <div className={`inline-flex items-center rounded-full border border-white/10 bg-black/45 p-[3px] backdrop-blur-md ${compact ? 'gap-0.5' : 'gap-1'}`}>
+      {options.map(sourceType => {
+        const available = tile.availableSourceTypes.includes(sourceType);
+        return (
+        <button
+          className={`rounded-full px-2.5 py-1 font-semibold transition ${
+            compact ? 'text-[9px]' : 'text-[10px]'
+          } ${
+            tile.activeSourceType === sourceType
+              ? 'bg-white text-[#11131a] shadow-[0_1px_8px_rgba(0,0,0,0.25)]'
+              : available
+                ? 'text-white/70 hover:bg-white/10 hover:text-white'
+                : 'cursor-not-allowed text-white/20'
+          }`}
+          disabled={!available}
+          key={sourceType}
+          onClick={() => switchTileSource(tile.studentName, sourceType)}
+          type="button"
+        >
+          {sourceType === 'screen' ? 'Screen' : 'Cam'}
+        </button>
+      );})}
     </div>
   );
 }
@@ -344,7 +389,7 @@ function AudioToggleButton({ audioEnabled, onClick, size = 'md', compact = false
     <button
       aria-label={label}
       className={`inline-flex ${buttonSize} items-center justify-center rounded-full border border-white/10 backdrop-blur-sm transition ${
-        audioEnabled ? 'bg-primary/20 text-primary hover:bg-primary/28' : 'bg-black/45 text-white/72 hover:bg-black/60 hover:text-white'
+        audioEnabled ? 'bg-primary/24 text-white hover:bg-primary/32' : 'bg-black/60 text-white/88 hover:bg-black/75 hover:text-white'
       }`}
       onClick={onClick}
       type="button"
@@ -409,6 +454,18 @@ function PriorityQueuePanel({ isOpen, setIsOpen }) {
 }
 
 function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient, setChatRecipient, chatConnected, chatError, sendChatMessage }) {
+  const visibleMessages = messages.filter(message => {
+    if (chatRecipient === 'all') {
+      return message.recipientMode === 'all';
+    }
+
+    if (message.senderRole === 'student') {
+      return message.senderName === chatRecipient;
+    }
+
+    return message.recipientMode === 'student' && message.recipientName === chatRecipient;
+  });
+
   return (
     <section className="min-h-0 flex flex-1 flex-col">
       <div className="px-6 py-5">
@@ -434,7 +491,7 @@ function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient,
 
       <div className="min-h-0 flex-1 overflow-auto px-6">
         <div className="space-y-5 pb-6">
-          {messages.length ? messages.map(message => {
+          {visibleMessages.length ? visibleMessages.map(message => {
             const ownMessage = message.senderRole === 'staff';
             return (
               <div className={ownMessage ? 'ml-10 rounded-2xl bg-primary px-4 py-4 text-white shadow-action' : 'rounded-2xl bg-white/[0.12] px-4 py-4 text-white/90'} key={message.id}>
@@ -447,7 +504,7 @@ function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient,
                 ) : null}
               </div>
             );
-          }) : <div className="rounded-2xl border border-white/[0.05] bg-white/[0.03] px-4 py-5 text-sm text-white/42">No chat messages yet.</div>}
+          }) : <div className="rounded-2xl border border-white/[0.05] bg-white/[0.03] px-4 py-5 text-sm text-white/42">No messages for this view yet.</div>}
         </div>
       </div>
 
