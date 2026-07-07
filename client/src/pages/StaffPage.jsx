@@ -8,6 +8,7 @@ import { useRoomChat } from '../useRoomChat.js';
 
 function StaffPage() {
   const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
+  const STUDENTS_PER_PAGE = 20;
   const [name, setName] = useState('');
   const [rooms, setRooms] = useState([]);
   const [joined, setJoined] = useState(false);
@@ -19,6 +20,8 @@ function StaffPage() {
   const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(TWO_HOURS_IN_SECONDS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [focusedStudentName, setFocusedStudentName] = useState(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalStudents, setTotalStudents] = useState(0);
   const [chatDraft, setChatDraft] = useState('');
   const [chatRecipient, setChatRecipient] = useState('all');
   const recvTransportRef = useRef(null);
@@ -30,6 +33,7 @@ function StaffPage() {
   const currentRoomIdRef = useRef('');
   const hasLeftRef = useRef(false);
   const focusedStudentNameRef = useRef(null);
+  const currentPageRef = useRef(0);
   const tileVideoRefs = useRef(new Map());
   const tilesRef = useRef([]);
   const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
@@ -57,6 +61,10 @@ function StaffPage() {
   useEffect(() => {
     tilesRef.current = tiles;
   }, [tiles]);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
 
   useEffect(() => {
     focusedStudentNameRef.current = focusedStudentName;
@@ -237,7 +245,17 @@ function StaffPage() {
       });
     }
 
+    nextTiles.sort((a, b) => a.studentName.localeCompare(b.studentName));
     return nextTiles;
+  }
+
+  function getPageCount(studentCount) {
+    return Math.max(1, Math.ceil(studentCount / STUDENTS_PER_PAGE));
+  }
+
+  function getTilesForPage(allTiles, page) {
+    const start = page * STUDENTS_PER_PAGE;
+    return allTiles.slice(start, start + STUDENTS_PER_PAGE);
   }
 
   async function consumeClientConsumer(consumerData) {
@@ -306,6 +324,28 @@ function StaffPage() {
     await apiCall('POST', '/api/staff/close-consumer', { consumerId });
   }
 
+  async function switchPageServerConsumers(closeConsumerIds, producerIds) {
+    const transport = recvTransportRef.current;
+    const device = deviceRef.current;
+    if (!transport || !device) return new Map();
+
+    const consumerPayloads = await apiCall('POST', '/api/staff/switch-page', {
+      transportId: transport.id,
+      closeConsumerIds,
+      producerIds,
+      rtpCapabilities: device.rtpCapabilities,
+    });
+
+    const entries = await Promise.all(
+      consumerPayloads.map(async consumerData => {
+        const consumerEntry = await consumeClientConsumer(consumerData);
+        return consumerEntry ? [consumerEntry.producerId, consumerEntry] : null;
+      })
+    );
+
+    return new Map(entries.filter(Boolean));
+  }
+
   async function setServerConsumerLayers(consumerId, spatialLayer) {
     await apiCall('POST', '/api/staff/set-consumer-layers', { consumerId, spatialLayer });
   }
@@ -365,6 +405,35 @@ function StaffPage() {
     } else {
       removeStreamTrack(studentName, kind);
     }
+  }
+
+  function teardownLocalStudentConsumption(studentName) {
+    const consumerState = consumerMapRef.current.get(studentName);
+    consumerMapRef.current.delete(studentName);
+
+    const localConsumers = [
+      consumerState?.cameraVideoConsumer,
+      consumerState?.screenVideoConsumer,
+      consumerState?.audioConsumer,
+    ].filter(Boolean);
+
+    for (const consumer of localConsumers) {
+      if (!consumer.closed) {
+        consumer.close();
+      }
+      removeSpecificStreamTrack(studentName, consumer.track);
+    }
+
+    const stream = streamMapRef.current.get(studentName);
+    if (stream) {
+      for (const track of [...stream.getTracks()]) {
+        stream.removeTrack(track);
+        track.stop();
+      }
+      streamMapRef.current.delete(studentName);
+    }
+
+    tileVideoRefs.current.delete(studentName);
   }
 
   async function syncStudentConsumers(tile, producerInfo, preparedConsumers = new Map()) {
@@ -636,7 +705,7 @@ function StaffPage() {
     setTilesState(nextTiles);
   }
 
-  async function syncConsumersForTiles(targetTiles) {
+  async function syncConsumersForTiles(targetTiles, seedConsumers = new Map()) {
     const missingProducerIds = new Set();
 
     for (const tile of targetTiles) {
@@ -653,14 +722,14 @@ function StaffPage() {
       const shouldKeepAudioConsumer = focusedStudentNameRef.current === tile.studentName;
 
       if (activeVideoSourceType === 'screen') {
-        if (activeVideoProducer && !currentConsumerState.screenVideoConsumer) {
+        if (activeVideoProducer && !currentConsumerState.screenVideoConsumer && !seedConsumers.has(activeVideoProducer.id)) {
           missingProducerIds.add(activeVideoProducer.id);
         }
-      } else if (activeVideoProducer && !currentConsumerState.cameraVideoConsumer) {
+      } else if (activeVideoProducer && !currentConsumerState.cameraVideoConsumer && !seedConsumers.has(activeVideoProducer.id)) {
         missingProducerIds.add(activeVideoProducer.id);
       }
 
-      if (shouldKeepAudioConsumer && latestAudioProducer && !currentConsumerState.audioConsumer) {
+      if (shouldKeepAudioConsumer && latestAudioProducer && !currentConsumerState.audioConsumer && !seedConsumers.has(latestAudioProducer.id)) {
         missingProducerIds.add(latestAudioProducer.id);
       }
     }
@@ -668,11 +737,12 @@ function StaffPage() {
     const preparedConsumers = missingProducerIds.size
       ? await createConsumersBatch([...missingProducerIds])
       : new Map();
+    const allPreparedConsumers = new Map([...seedConsumers.entries(), ...preparedConsumers.entries()]);
 
     for (const tile of targetTiles) {
       const producerInfo = producerMapRef.current.get(tile.studentName);
       if (producerInfo) {
-        await syncStudentConsumers(tile, producerInfo, preparedConsumers);
+        await syncStudentConsumers(tile, producerInfo, allPreparedConsumers);
       }
     }
   }
@@ -707,12 +777,21 @@ function StaffPage() {
     const nextProducerMap = buildProducerMap(producers);
     producerMapRef.current = nextProducerMap;
 
-    const nextTiles = buildNextTiles(tilesRef.current, nextProducerMap);
+    const allTiles = buildNextTiles(tilesRef.current, nextProducerMap);
+    setTotalStudents(allTiles.length);
+    const pageCount = getPageCount(allTiles.length);
+    const clampedPage = Math.min(currentPageRef.current, pageCount - 1);
+    const nextTiles = getTilesForPage(allTiles, clampedPage);
     const nextStudentNames = new Set(nextTiles.map(tile => tile.studentName));
 
     if (focusedStudentNameRef.current && !nextStudentNames.has(focusedStudentNameRef.current)) {
       focusedStudentNameRef.current = null;
       setFocusedStudentName(null);
+    }
+
+    if (clampedPage !== currentPageRef.current) {
+      currentPageRef.current = clampedPage;
+      setCurrentPage(clampedPage);
     }
 
     for (const studentName of [...consumerMapRef.current.keys()]) {
@@ -874,6 +953,70 @@ function StaffPage() {
     await clearFocusedStudent();
   }
 
+  function getVisibleProducerIdsForTiles(targetTiles) {
+    const producerIds = [];
+
+    for (const tile of targetTiles) {
+      const producerInfo = producerMapRef.current.get(tile.studentName);
+      if (!producerInfo) continue;
+
+      const activeVideoProducer =
+        tile.activeSourceType === 'screen'
+          ? producerInfo.screenVideo || producerInfo.cameraVideo
+          : producerInfo.cameraVideo || producerInfo.screenVideo;
+
+      if (activeVideoProducer) {
+        producerIds.push(activeVideoProducer.id);
+      }
+    }
+
+    return producerIds;
+  }
+
+  function getCurrentPageConsumerIds() {
+    const consumerIds = [];
+
+    for (const tile of tilesRef.current) {
+      const consumerState = consumerMapRef.current.get(tile.studentName);
+      if (!consumerState) continue;
+
+      if (consumerState.cameraVideoConsumerId) consumerIds.push(consumerState.cameraVideoConsumerId);
+      if (consumerState.screenVideoConsumerId) consumerIds.push(consumerState.screenVideoConsumerId);
+      if (consumerState.audioConsumerId) consumerIds.push(consumerState.audioConsumerId);
+    }
+
+    return consumerIds;
+  }
+
+  async function handlePageChange(nextPage) {
+    if (!joined) return;
+
+    const allTiles = buildNextTiles(tilesRef.current, producerMapRef.current);
+    const pageCount = getPageCount(allTiles.length);
+    const targetPage = Math.max(0, Math.min(nextPage, pageCount - 1));
+    if (targetPage === currentPageRef.current) return;
+
+    const nextTiles = getTilesForPage(allTiles, targetPage).map(tile => ({
+      ...tile,
+      audioEnabled: false,
+    }));
+
+    const closeConsumerIds = getCurrentPageConsumerIds();
+    const nextProducerIds = getVisibleProducerIdsForTiles(nextTiles);
+    const preparedConsumers = await switchPageServerConsumers(closeConsumerIds, nextProducerIds);
+
+    for (const tile of tilesRef.current) {
+      teardownLocalStudentConsumption(tile.studentName);
+    }
+
+    focusedStudentNameRef.current = null;
+    setFocusedStudentName(null);
+    currentPageRef.current = targetPage;
+    setCurrentPage(targetPage);
+    setTilesState(nextTiles);
+    await syncConsumersForTiles(nextTiles, preparedConsumers);
+  }
+
   return (
     <AppShell
       mainClassName={joined ? 'max-w-[1760px] xl:h-[calc(100vh-24px)]' : 'max-w-[560px]'}
@@ -913,6 +1056,11 @@ function StaffPage() {
           switchTileSource={switchTileSource}
           focusedStudentName={focusedStudentName}
           setFocusedStudentName={handleFocusedStudentChange}
+          currentPage={currentPage}
+          totalPages={getPageCount(totalStudents)}
+          onPageChange={handlePageChange}
+          studentsPerPage={STUDENTS_PER_PAGE}
+          totalStudents={totalStudents}
         />
       )}
     </AppShell>

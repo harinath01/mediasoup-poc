@@ -33,6 +33,11 @@ function StaffDashboard({
   switchTileSource,
   focusedStudentName,
   setFocusedStudentName,
+  currentPage,
+  totalPages,
+  onPageChange,
+  studentsPerPage,
+  totalStudents,
   timeRemaining,
 }) {
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -50,6 +55,11 @@ function StaffDashboard({
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           studentCount={studentCount}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+          studentsPerPage={studentsPerPage}
+          totalStudents={totalStudents}
         />
 
         {error ? <div className="mx-6 mt-6 rounded border border-danger/20 bg-danger/10 px-3.5 py-3 text-[#f3b4c1]">{error}</div> : null}
@@ -129,7 +139,10 @@ function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
   );
 }
 
-function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen }) {
+function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen, currentPage, totalPages, onPageChange, studentsPerPage, totalStudents }) {
+  const pageStart = totalStudents ? currentPage * studentsPerPage + 1 : 0;
+  const pageEnd = Math.min((currentPage + 1) * studentsPerPage, totalStudents);
+
   return (
     <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-4">
       <div className="flex items-center gap-4">
@@ -141,14 +154,42 @@ function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen }) {
           <div className="text-sm text-white/38">Click any tile to open the focus view.</div>
         </div>
       </div>
-      <button
-        aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-        className={`inline-flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white/[0.05] hover:text-white ${sidebarOpen ? 'text-white' : 'bg-primary text-white shadow-action'}`}
-        onClick={() => setSidebarOpen(current => !current)}
-        type="button"
-      >
-        <SidebarIcon />
-      </button>
+      <div className="flex items-center gap-4">
+        <div className="text-right">
+          <div className="text-sm font-semibold text-white/70">
+            Page {Math.min(currentPage + 1, totalPages)} / {totalPages}
+          </div>
+          <div className="text-xs text-white/38">
+            {totalStudents ? `${pageStart}-${pageEnd} of ${totalStudents}` : 'No students'}
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-xl bg-white/[0.06] p-1">
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:text-white/25"
+            disabled={currentPage <= 0}
+            onClick={() => onPageChange(currentPage - 1)}
+            type="button"
+          >
+            Prev
+          </button>
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:text-white/25"
+            disabled={currentPage >= totalPages - 1}
+            onClick={() => onPageChange(currentPage + 1)}
+            type="button"
+          >
+            Next
+          </button>
+        </div>
+        <button
+          aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          className={`inline-flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white/[0.05] hover:text-white ${sidebarOpen ? 'text-white' : 'bg-primary text-white shadow-action'}`}
+          onClick={() => setSidebarOpen(current => !current)}
+          type="button"
+        >
+          <SidebarIcon />
+        </button>
+      </div>
     </div>
   );
 }

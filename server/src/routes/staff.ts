@@ -13,6 +13,18 @@ import { getOrCreateRoomRouter, createWebRtcTransport } from '../utils.js';
 
 const router = Router();
 
+function serializeConsumer(consumer: Awaited<ReturnType<typeof transports.get>> extends never ? never : any) {
+  return {
+    id: consumer.id,
+    consumerId: consumer.id,
+    producerId: consumer.producerId,
+    kind: consumer.kind,
+    rtpParameters: consumer.rtpParameters,
+    type: consumer.type,
+    paused: consumer.paused,
+  };
+}
+
 router.post('/api/staff/join', async (req: Request, res: Response) => {
   const { name, roomId } = req.body;
   if (!name || !roomId) {
@@ -128,15 +140,7 @@ router.post('/api/staff/consume', async (req: Request, res: Response) => {
   });
   console.log(`[consume] transport=${transportId}, producer=${producerId}, consumer=${consumer.id}`);
 
-  res.json({
-    id: consumer.id,
-    consumerId: consumer.id,
-    producerId: consumer.producerId,
-    kind: consumer.kind,
-    rtpParameters: consumer.rtpParameters,
-    type: consumer.type,
-    paused: consumer.paused,
-  });
+  res.json(serializeConsumer(consumer));
 });
 
 router.post('/api/staff/consume-batch', async (req: Request, res: Response) => {
@@ -184,15 +188,65 @@ router.post('/api/staff/consume-batch', async (req: Request, res: Response) => {
 
       console.log(`[consume-batch] transport=${transportId}, producer=${producerId}, consumer=${consumer.id}`);
 
-      return {
-        id: consumer.id,
-        consumerId: consumer.id,
-        producerId: consumer.producerId,
+      return serializeConsumer(consumer);
+    })
+  );
+
+  res.json(consumerPayloads);
+});
+
+router.post('/api/staff/switch-page', async (req: Request, res: Response) => {
+  const { transportId, closeConsumerIds = [], producerIds = [], rtpCapabilities } = req.body;
+  if (!transportId || !Array.isArray(closeConsumerIds) || !Array.isArray(producerIds) || !rtpCapabilities) {
+    res.status(400).json({ error: 'transportId, closeConsumerIds, producerIds, and rtpCapabilities are required' });
+    return;
+  }
+
+  const transportEntry = transports.get(transportId);
+  if (!transportEntry || transportEntry.role !== 'staff') {
+    res.status(404).json({ error: 'staff transport not found' });
+    return;
+  }
+
+  for (const consumerId of [...new Set(closeConsumerIds)]) {
+    const consumerEntry = consumers.get(consumerId);
+    if (!consumerEntry) continue;
+    if (consumerEntry.transportId !== transportId) continue;
+    consumerEntry.consumer.close();
+  }
+
+  const uniqueProducerIds = [...new Set(producerIds)];
+  const missingProducerId = uniqueProducerIds.find(producerId => !producers.has(producerId));
+  if (missingProducerId) {
+    res.status(404).json({ error: `producer not found: ${missingProducerId}` });
+    return;
+  }
+
+  const consumerPayloads = await Promise.all(
+    uniqueProducerIds.map(async producerId => {
+      const producerEntry = producers.get(producerId);
+      if (!producerEntry) {
+        throw new Error(`producer not found: ${producerId}`);
+      }
+
+      const consumer = await transportEntry.transport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: true,
+      });
+
+      registerConsumer(consumer, {
+        transportId,
+        roomId: transportEntry.roomId,
+        staffName: transportEntry.participantName,
+        studentName: producerEntry.studentName,
+        producerId,
         kind: consumer.kind,
-        rtpParameters: consumer.rtpParameters,
-        type: consumer.type,
-        paused: consumer.paused,
-      };
+        sourceType: producerEntry.sourceType,
+      });
+
+      console.log(`[switch-page] transport=${transportId}, producer=${producerId}, consumer=${consumer.id}`);
+      return serializeConsumer(consumer);
     })
   );
 
