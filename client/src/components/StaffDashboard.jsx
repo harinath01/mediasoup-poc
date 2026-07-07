@@ -31,17 +31,15 @@ function StaffDashboard({
   leaveRoom,
   toggleRemoteAudio,
   switchTileSource,
-  viewMode,
-  setViewMode,
   timeRemaining,
 }) {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-  const primaryTile = tiles[0] || null;
-  const secondaryTiles = primaryTile ? tiles.slice(1) : tiles;
+  const [focusedStudentName, setFocusedStudentName] = useState(null);
   const roomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
   const roomStats = rooms.find(room => room.id === roomId);
   const studentCount = roomStats?.students || tiles.length || 0;
+  const focusedTile = tiles.find(tile => tile.studentName === focusedStudentName) || null;
 
   return (
     <div className={`grid h-full gap-0 ${sidebarOpen ? 'xl:grid-cols-[minmax(0,1fr)_390px]' : 'grid-cols-1'}`}>
@@ -51,26 +49,19 @@ function StaffDashboard({
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           studentCount={studentCount}
-          setViewMode={setViewMode}
-          viewMode={viewMode}
         />
 
         {error ? <div className="mx-6 mt-6 rounded border border-danger/20 bg-danger/10 px-3.5 py-3 text-[#f3b4c1]">{error}</div> : null}
 
         <div className="min-h-0 flex-1 overflow-auto p-6">
-          {viewMode === 'grid' ? (
-            <GridView tiles={tiles} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
-          ) : viewMode === 'compact' ? (
-            <CompactView tiles={tiles} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
-          ) : (
-            <>
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_360px]">
-                <PrimaryFeedTile tile={primaryTile} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
-                <SecondaryFeedStack tiles={secondaryTiles.slice(0, 2)} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
-              </div>
-              <FeedGrid tiles={secondaryTiles.slice(2)} tileVideoRefs={tileVideoRefs} toggleRemoteAudio={toggleRemoteAudio} switchTileSource={switchTileSource} />
-            </>
-          )}
+          <GridView
+            focusedStudentName={focusedStudentName}
+            openFocusView={setFocusedStudentName}
+            switchTileSource={switchTileSource}
+            tileVideoRefs={tileVideoRefs}
+            tiles={tiles}
+            toggleRemoteAudio={toggleRemoteAudio}
+          />
         </div>
       </section>
 
@@ -89,6 +80,15 @@ function StaffDashboard({
           setChatRecipient={setChatRecipient}
         />
       </aside>
+
+      {focusedTile ? (
+        <FocusModal
+          close={() => setFocusedStudentName(null)}
+          switchTileSource={switchTileSource}
+          tile={focusedTile}
+          toggleRemoteAudio={toggleRemoteAudio}
+        />
+      ) : null}
     </div>
   );
 }
@@ -129,34 +129,17 @@ function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
   );
 }
 
-function DashboardToolbar({ studentCount, viewMode, setViewMode, sidebarOpen, setSidebarOpen }) {
+function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen }) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-4">
-      <div className="flex items-center gap-5">
-        <div className="inline-flex rounded-xl bg-white/[0.06] p-1">
-          <button
-            className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${viewMode === 'grid' ? 'bg-primary text-white shadow-action' : 'text-white/45'}`}
-            onClick={() => setViewMode('grid')}
-            type="button"
-          >
-            <GridIcon />
-          </button>
-          <button
-            className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${viewMode === 'spotlight' ? 'bg-primary text-white shadow-action' : 'text-white/45'}`}
-            onClick={() => setViewMode('spotlight')}
-            type="button"
-          >
-            <PanelIcon />
-          </button>
-          <button
-            className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${viewMode === 'compact' ? 'bg-primary text-white shadow-action' : 'text-white/45'}`}
-            onClick={() => setViewMode('compact')}
-            type="button"
-          >
-            <CompactGridIcon />
-          </button>
+      <div className="flex items-center gap-4">
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white shadow-action">
+          <GridIcon />
         </div>
-        <div className="text-lg text-white/75">Viewing {studentCount} Students</div>
+        <div>
+          <div className="text-lg text-white/75">Viewing {studentCount} Students</div>
+          <div className="text-sm text-white/38">Click any tile to open the focus view.</div>
+        </div>
       </div>
       <button
         aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
@@ -170,125 +153,72 @@ function DashboardToolbar({ studentCount, viewMode, setViewMode, sidebarOpen, se
   );
 }
 
-function PrimaryFeedTile({ tile, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
-  if (!tile) {
-    return <div className="flex aspect-[1.6/1] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
-  }
-
+function FocusModal({ tile, close, toggleRemoteAudio, switchTileSource }) {
   return (
-    <article className="relative aspect-[1.6/1] overflow-hidden rounded-2xl border border-white/[0.05] bg-transparent">
-      <video
-        autoPlay
-        playsInline
-        className="h-full w-full object-cover"
-        ref={node => {
-          if (node) {
-            tileVideoRefs.current.set(tile.studentName, node);
-            if (node.srcObject !== tile.stream) node.srcObject = tile.stream;
-            node.muted = !tile.audioEnabled;
-            node.volume = tile.audioEnabled ? 1 : 0;
-          } else {
-            tileVideoRefs.current.delete(tile.studentName);
-          }
-        }}
-      />
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/85 via-black/25 to-transparent px-5 pb-5 pt-16">
-        <div>
-          <div className="text-[2.1rem] font-bold tracking-[-0.03em] text-white">{tile.studentName}</div>
-          <div className="mt-3">
-            <SourceSelector tile={tile} switchTileSource={switchTileSource} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm" onClick={close} role="dialog" aria-modal="true">
+      <div className="w-full max-w-6xl overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0d0f15] shadow-[0_24px_120px_rgba(0,0,0,0.55)]" onClick={event => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-5">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.18em] text-white/35">Focus View</div>
+            <div className="mt-1 text-xl font-bold tracking-[-0.03em] text-white">{tile.studentName}</div>
           </div>
+          <button
+            aria-label="Close focus view"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+            onClick={close}
+            type="button"
+          >
+            <CloseIcon />
+          </button>
         </div>
-        <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} size="lg" />
-      </div>
-    </article>
-  );
-}
-
-function SecondaryFeedStack({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
-  return (
-    <div className="grid gap-4">
-      {tiles.map((tile, index) => (
-        <article className={`relative aspect-[1.6/1] overflow-hidden rounded-2xl border bg-transparent ${index === 0 ? 'border-primary shadow-[0_0_0_2px_rgba(104,103,240,0.35)]' : 'border-white/[0.05]'}`} key={tile.studentName}>
-          <video
-            autoPlay
-            playsInline
-            className="h-full w-full object-cover"
-            ref={node => {
-              if (node) {
-                tileVideoRefs.current.set(tile.studentName, node);
+        <div className="p-6">
+          <article className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-black">
+            <video
+              autoPlay
+              playsInline
+              className="aspect-[16/9] w-full object-contain"
+              ref={node => {
+                if (!node) return;
                 if (node.srcObject !== tile.stream) node.srcObject = tile.stream;
                 node.muted = !tile.audioEnabled;
                 node.volume = tile.audioEnabled ? 1 : 0;
-              } else {
-                tileVideoRefs.current.delete(tile.studentName);
-              }
-            }}
-          />
-          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 py-4">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 text-[0.95rem] font-bold text-white">
-                <span className={`h-2.5 w-2.5 rounded-full ${index === 0 ? 'bg-emerald-400' : 'bg-white/20'}`} />
-                <span>{tile.studentName}</span>
+              }}
+            />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-5 pb-5 pt-16">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[1.8rem] font-bold tracking-[-0.03em] text-white">{tile.studentName}</div>
+                  <div className="mt-1 text-sm text-white/55">{tile.displayLabel}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <SourceSelector tile={tile} switchTileSource={switchTileSource} />
+                  <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} size="lg" />
+                </div>
               </div>
-              <SourceSelector tile={tile} switchTileSource={switchTileSource} compact />
             </div>
-            <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
-          </div>
-        </article>
-      ))}
+          </article>
+        </div>
+      </div>
     </div>
   );
 }
 
-function FeedGrid({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
-  if (!tiles.length) return null;
-
-  return (
-    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {tiles.map(tile => (
-        <article className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-transparent" key={tile.studentName}>
-          <video
-            autoPlay
-            playsInline
-            className="aspect-[1.32/1] w-full object-cover"
-            ref={node => {
-              if (node) {
-                tileVideoRefs.current.set(tile.studentName, node);
-                if (node.srcObject !== tile.stream) node.srcObject = tile.stream;
-                node.muted = !tile.audioEnabled;
-                node.volume = tile.audioEnabled ? 1 : 0;
-              } else {
-                tileVideoRefs.current.delete(tile.studentName);
-              }
-            }}
-          />
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-10">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-base font-bold text-white">{tile.studentName}</div>
-              <SourceSelector tile={tile} switchTileSource={switchTileSource} />
-              <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function GridView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
+function GridView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource, openFocusView, focusedStudentName }) {
   if (!tiles.length) {
     return <div className="flex h-full min-h-[280px] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
       {tiles.map(tile => (
-        <article className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-transparent" key={tile.studentName}>
+        <article
+          className={`group relative overflow-hidden rounded-2xl border bg-transparent transition ${focusedStudentName === tile.studentName ? 'border-primary shadow-[0_0_0_2px_rgba(104,103,240,0.35)]' : 'border-white/[0.05] hover:border-white/15'}`}
+          key={tile.studentName}
+        >
           <video
             autoPlay
             playsInline
-            className="aspect-[1.32/1] w-full object-cover"
+            className="aspect-[1.5/1] w-full object-cover"
             ref={node => {
               if (node) {
                 tileVideoRefs.current.set(tile.studentName, node);
@@ -300,48 +230,19 @@ function GridView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource })
               }
             }}
           />
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-10">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-base font-bold text-white">{tile.studentName}</div>
-              <SourceSelector tile={tile} switchTileSource={switchTileSource} />
-              <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function CompactView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource }) {
-  if (!tiles.length) {
-    return <div className="flex h-full min-h-[280px] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
-  }
-
-  return (
-    <div className="grid gap-3 md:grid-cols-3 2xl:grid-cols-4">
-      {tiles.map(tile => (
-        <article className="relative overflow-hidden rounded-xl border border-white/[0.05] bg-transparent" key={tile.studentName}>
-          <video
-            autoPlay
-            playsInline
-            className="aspect-video w-full object-cover"
-            ref={node => {
-              if (node) {
-                tileVideoRefs.current.set(tile.studentName, node);
-                if (node.srcObject !== tile.stream) node.srcObject = tile.stream;
-                node.muted = !tile.audioEnabled;
-                node.volume = tile.audioEnabled ? 1 : 0;
-              } else {
-                tileVideoRefs.current.delete(tile.studentName);
-              }
-            }}
+          <button
+            aria-label={`Open focus view for ${tile.studentName}`}
+            className="absolute inset-0 z-10"
+            onClick={() => openFocusView(tile.studentName)}
+            type="button"
           />
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/52 to-transparent px-3 pb-2.5 pt-8">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-2.5 pt-8">
             <div className="flex items-center justify-between gap-2">
               <div className="truncate text-sm font-bold text-white">{tile.studentName}</div>
-              <SourceSelector tile={tile} switchTileSource={switchTileSource} compact />
-              <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} compact />
+              <div className="relative z-20 flex items-center gap-2">
+                <SourceSelector tile={tile} switchTileSource={switchTileSource} />
+                <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
+              </div>
             </div>
           </div>
         </article>
@@ -350,18 +251,16 @@ function CompactView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource
   );
 }
 
-function SourceSelector({ tile, switchTileSource, compact = false }) {
+function SourceSelector({ tile, switchTileSource }) {
   const options = ['camera', 'screen'];
 
   return (
-    <div className={`inline-flex items-center rounded-full border border-white/10 bg-black/45 p-[3px] backdrop-blur-md ${compact ? 'gap-0.5' : 'gap-1'}`}>
+    <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/45 p-[3px] backdrop-blur-md">
       {options.map(sourceType => {
         const available = tile.availableSourceTypes.includes(sourceType);
         return (
         <button
-          className={`rounded-full px-2.5 py-1 font-semibold transition ${
-            compact ? 'text-[9px]' : 'text-[10px]'
-          } ${
+          className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${
             tile.activeSourceType === sourceType
               ? 'bg-white text-[#11131a] shadow-[0_1px_8px_rgba(0,0,0,0.25)]'
               : available
@@ -380,8 +279,8 @@ function SourceSelector({ tile, switchTileSource, compact = false }) {
   );
 }
 
-function AudioToggleButton({ audioEnabled, onClick, size = 'md', compact = false }) {
-  const buttonSize = size === 'lg' ? 'h-14 w-14' : compact ? 'h-9 w-9' : 'h-10 w-10';
+function AudioToggleButton({ audioEnabled, onClick, size = 'md' }) {
+  const buttonSize = size === 'lg' ? 'h-14 w-14' : 'h-8 w-8';
   const iconSize = size === 'lg' ? 'h-6 w-6' : 'h-5 w-5';
   const label = audioEnabled ? 'Mute user audio' : 'Unmute user audio';
 
@@ -532,9 +431,8 @@ function ChatPanel({ messages, presence, chatDraft, setChatDraft, chatRecipient,
 
 function ShieldIcon() { return <svg className="h-6 w-6" viewBox="-4 -2 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M2 4.386V8a9.02 9.02 0 0 0 3.08 6.787L8 17.342l2.92-2.555A9.019 9.019 0 0 0 14 8V4.386l-6-2.25-6 2.25zM.649 2.756L8 0l7.351 2.757a1 1 0 0 1 .649.936V8c0 3.177-1.372 6.2-3.763 8.293L8 20l-4.237-3.707A11.019 11.019 0 0 1 0 8V3.693a1 1 0 0 1 .649-.936z" /></svg>; }
 function GridIcon() { return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" stroke="currentColor" strokeWidth="1.6" /></svg>; }
-function PanelIcon() { return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="6" height="16" stroke="currentColor" strokeWidth="1.6" /><rect x="14" y="4" width="6" height="6" stroke="currentColor" strokeWidth="1.6" /><rect x="14" y="14" width="6" height="6" stroke="currentColor" strokeWidth="1.6" /></svg>; }
-function CompactGridIcon() { return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="5" height="5" stroke="currentColor" strokeWidth="1.6" /><rect x="10" y="5" width="5" height="5" stroke="currentColor" strokeWidth="1.6" /><rect x="16" y="5" width="4" height="5" stroke="currentColor" strokeWidth="1.6" /><rect x="4" y="12" width="5" height="7" stroke="currentColor" strokeWidth="1.6" /><rect x="10" y="12" width="5" height="7" stroke="currentColor" strokeWidth="1.6" /><rect x="16" y="12" width="4" height="7" stroke="currentColor" strokeWidth="1.6" /></svg>; }
 function SidebarIcon() { return <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" /><path d="M9 4v16" stroke="currentColor" strokeWidth="1.6" /></svg>; }
+function CloseIcon() { return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
 function MuteIcon({ className = 'h-6 w-6' }) { return <svg className={className} viewBox="0 0 24 24" fill="none"><path d="m4 4 16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M14 9.5V6a2 2 0 1 0-4 0v2.2M9.9 13.9A2 2 0 0 0 14 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M6.5 11.5A5.5 5.5 0 0 0 12 17a5.47 5.47 0 0 0 3.8-1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
 function VolumeIcon({ className = 'h-6 w-6' }) { return <svg className={className} viewBox="0 0 24 24" fill="none"><path d="M3 10h4l5-4v12l-5-4H3z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>; }
 function ChevronDownIcon({ className = '' }) { return <svg className={`h-4 w-4 text-white/60 transition ${className}`.trim()} viewBox="0 0 24 24" fill="none"><path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>; }

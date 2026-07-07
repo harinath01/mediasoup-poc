@@ -16,7 +16,6 @@ function StaffPage() {
   const [error, setError] = useState('');
   const [tiles, setTiles] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState('grid');
   const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(TWO_HOURS_IN_SECONDS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatDraft, setChatDraft] = useState('');
@@ -519,8 +518,6 @@ function StaffPage() {
           tiles={tiles}
           toggleRemoteAudio={toggleRemoteAudio}
           switchTileSource={switchTileSource}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
         />
       )}
     </AppShell>
