@@ -31,11 +31,12 @@ function StaffDashboard({
   leaveRoom,
   toggleRemoteAudio,
   switchTileSource,
+  focusedStudentName,
+  setFocusedStudentName,
   timeRemaining,
 }) {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-  const [focusedStudentName, setFocusedStudentName] = useState(null);
   const roomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
   const roomStats = rooms.find(room => room.id === roomId);
   const studentCount = roomStats?.students || tiles.length || 0;
@@ -60,7 +61,6 @@ function StaffDashboard({
             switchTileSource={switchTileSource}
             tileVideoRefs={tileVideoRefs}
             tiles={tiles}
-            toggleRemoteAudio={toggleRemoteAudio}
           />
         </div>
       </section>
@@ -203,7 +203,7 @@ function FocusModal({ tile, close, toggleRemoteAudio, switchTileSource }) {
   );
 }
 
-function GridView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource, openFocusView, focusedStudentName }) {
+function GridView({ tiles, tileVideoRefs, switchTileSource, openFocusView, focusedStudentName }) {
   if (!tiles.length) {
     return <div className="flex h-full min-h-[280px] items-center justify-center rounded-2xl border border-white/[0.05] bg-white/[0.03] text-white/35">Waiting for student feeds</div>;
   }
@@ -239,9 +239,8 @@ function GridView({ tiles, tileVideoRefs, toggleRemoteAudio, switchTileSource, o
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-2.5 pt-8">
             <div className="flex items-center justify-between gap-2">
               <div className="truncate text-sm font-bold text-white">{tile.studentName}</div>
-              <div className="relative z-20 flex items-center gap-2">
+              <div className="relative z-20">
                 <SourceSelector tile={tile} switchTileSource={switchTileSource} />
-                <AudioToggleButton audioEnabled={tile.audioEnabled} onClick={() => toggleRemoteAudio(tile.studentName)} />
               </div>
             </div>
           </div>

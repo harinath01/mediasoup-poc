@@ -26,6 +26,17 @@ interface ProducerEntry {
   displayLabel?: string;
 }
 
+interface ConsumerEntry {
+  consumer: mediasoupTypes.Consumer;
+  transportId: string;
+  roomId: string;
+  staffName: string;
+  studentName: string;
+  producerId: string;
+  kind: mediasoupTypes.MediaKind;
+  sourceType: ProducerSourceType;
+}
+
 const rooms = new Map<string, Room>();
 
 export function getRoom(roomId: string): Room | undefined {
@@ -50,6 +61,7 @@ export const routers = new Map<string, mediasoupTypes.Router>();
 export const transports = new Map<string, TransportEntry>();
 
 export const producers = new Map<string, ProducerEntry>();
+export const consumers = new Map<string, ConsumerEntry>();
 
 function removeParticipant(roomId: string, participantName: string, role: ParticipantRole) {
   const room = rooms.get(roomId);
@@ -74,6 +86,10 @@ function removeParticipant(roomId: string, participantName: string, role: Partic
 
 export function removeProducer(producerId: string) {
   producers.delete(producerId);
+}
+
+export function removeConsumer(consumerId: string) {
+  consumers.delete(consumerId);
 }
 
 export function registerTransport(
@@ -108,11 +124,36 @@ export function registerProducer(
   });
 }
 
+export function registerConsumer(
+  consumer: mediasoupTypes.Consumer,
+  details: Omit<ConsumerEntry, 'consumer'>
+) {
+  consumers.set(consumer.id, { consumer, ...details });
+
+  consumer.on('transportclose', () => {
+    removeConsumer(consumer.id);
+  });
+
+  consumer.on('producerclose', () => {
+    removeConsumer(consumer.id);
+  });
+
+  consumer.observer.on('close', () => {
+    removeConsumer(consumer.id);
+  });
+}
+
 export function cleanupTransport(transportId: string) {
   const entry = transports.get(transportId);
   if (!entry) return;
 
   transports.delete(transportId);
+
+  for (const [consumerId, consumerEntry] of consumers.entries()) {
+    if (consumerEntry.transportId !== transportId) continue;
+    consumerEntry.consumer.close();
+    consumers.delete(consumerId);
+  }
 
   for (const [producerId, producerEntry] of producers.entries()) {
     if (producerEntry.transportId !== transportId) continue;

@@ -18,6 +18,7 @@ function StaffPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(TWO_HOURS_IN_SECONDS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [focusedStudentName, setFocusedStudentName] = useState(null);
   const [chatDraft, setChatDraft] = useState('');
   const [chatRecipient, setChatRecipient] = useState('all');
   const recvTransportRef = useRef(null);
@@ -28,6 +29,7 @@ function StaffPage() {
   const pollIntervalRef = useRef(null);
   const currentRoomIdRef = useRef('');
   const hasLeftRef = useRef(false);
+  const focusedStudentNameRef = useRef(null);
   const tileVideoRefs = useRef(new Map());
   const tilesRef = useRef([]);
   const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
@@ -55,6 +57,20 @@ function StaffPage() {
   useEffect(() => {
     tilesRef.current = tiles;
   }, [tiles]);
+
+  useEffect(() => {
+    focusedStudentNameRef.current = focusedStudentName;
+    const nextTiles = tilesRef.current.map(tile => ({
+      ...tile,
+      audioEnabled: false,
+    }));
+    tilesRef.current = nextTiles;
+    setTiles(nextTiles);
+
+    if (joined) {
+      void syncConsumersForTiles(nextTiles);
+    }
+  }, [focusedStudentName, joined]);
 
   useEffect(() => {
     function handlePageHide() {
@@ -235,12 +251,30 @@ function StaffPage() {
       rtpCapabilities: device.rtpCapabilities,
     });
 
-    return transport.consume({
+    const consumer = await transport.consume({
       id: consumerData.id,
       producerId: consumerData.producerId,
       kind: consumerData.kind,
       rtpParameters: consumerData.rtpParameters,
     });
+
+    return {
+      consumer,
+      consumerId: consumerData.consumerId || consumerData.id,
+      paused: consumerData.paused ?? false,
+    };
+  }
+
+  async function pauseServerConsumer(consumerId) {
+    await apiCall('POST', '/api/staff/pause-consumer', { consumerId });
+  }
+
+  async function resumeServerConsumer(consumerId) {
+    await apiCall('POST', '/api/staff/resume-consumer', { consumerId });
+  }
+
+  async function closeServerConsumer(consumerId) {
+    await apiCall('POST', '/api/staff/close-consumer', { consumerId });
   }
 
   function removeStreamTrack(studentName, kind) {
@@ -255,67 +289,319 @@ function StaffPage() {
     }
   }
 
-  async function syncStudentConsumers(tile, producerInfo) {
-    const desiredVideoProducer =
-      tile.activeSourceType === 'screen'
-        ? producerInfo.screenVideo || producerInfo.cameraVideo
-        : producerInfo.cameraVideo || producerInfo.screenVideo;
-    const desiredAudioProducer = producerInfo.cameraAudio || producerInfo.screenAudio;
+  function removeSpecificStreamTrack(studentName, track) {
+    const stream = streamMapRef.current.get(studentName);
+    if (!stream || !track) return;
 
-    const currentConsumerState = consumerMapRef.current.get(tile.studentName) || {
-      videoConsumer: null,
-      audioConsumer: null,
-      videoProducerId: null,
-      audioProducerId: null,
-    };
+    if (stream.getTracks().includes(track)) {
+      stream.removeTrack(track);
+    }
+  }
 
-    if (currentConsumerState.videoProducerId !== desiredVideoProducer?.id) {
-      if (currentConsumerState.videoConsumer) {
-        currentConsumerState.videoConsumer.close();
-        removeStreamTrack(tile.studentName, 'video');
-      }
+  function replaceStreamTrack(studentName, kind, nextTrack) {
+    const stream = streamMapRef.current.get(studentName);
+    if (!stream) return;
 
-      currentConsumerState.videoConsumer = null;
-      currentConsumerState.videoProducerId = null;
-
-      if (desiredVideoProducer) {
-        setStatus({ state: 'connecting', text: `Consuming ${desiredVideoProducer.sourceType} video from ${tile.studentName}...` });
-        const consumer = await createConsumer(desiredVideoProducer.id);
-        if (consumer) {
-          currentConsumerState.videoConsumer = consumer;
-          currentConsumerState.videoProducerId = desiredVideoProducer.id;
-          tile.stream.addTrack(consumer.track);
-        }
+    for (const track of [...stream.getTracks()]) {
+      if (track.kind === kind && track !== nextTrack) {
+        stream.removeTrack(track);
       }
     }
 
-    if (currentConsumerState.audioProducerId !== desiredAudioProducer?.id) {
+    if (nextTrack && !stream.getTracks().includes(nextTrack)) {
+      stream.addTrack(nextTrack);
+    }
+  }
+
+  async function closeClientConsumer(studentName, kind, consumer, consumerId) {
+    const consumerTrack = consumer?.track;
+
+    if (consumerId) {
+      try {
+        await closeServerConsumer(consumerId);
+      } catch (err) {
+        console.error(`failed to close server consumer for ${studentName}/${kind}`, err);
+      }
+    }
+
+    if (consumer && !consumer.closed) {
+      consumer.close();
+    }
+    if (consumerTrack) {
+      removeSpecificStreamTrack(studentName, consumerTrack);
+    } else {
+      removeStreamTrack(studentName, kind);
+    }
+  }
+
+  async function syncStudentConsumers(tile, producerInfo) {
+    const activeVideoProducer =
+      tile.activeSourceType === 'screen'
+        ? producerInfo.screenVideo || producerInfo.cameraVideo
+        : producerInfo.cameraVideo || producerInfo.screenVideo;
+    const latestAudioProducer = producerInfo.cameraAudio || producerInfo.screenAudio;
+    const shouldKeepAudioConsumer = focusedStudentNameRef.current === tile.studentName;
+
+    const currentConsumerState = consumerMapRef.current.get(tile.studentName) || {
+      cameraVideoConsumer: null,
+      cameraVideoConsumerId: null,
+      cameraVideoProducerId: null,
+      cameraVideoPausedOnServer: true,
+      screenVideoConsumer: null,
+      screenVideoConsumerId: null,
+      screenVideoProducerId: null,
+      screenVideoPausedOnServer: true,
+      audioConsumer: null,
+      audioConsumerId: null,
+      audioProducerId: null,
+      audioPausedOnServer: true,
+    };
+
+    if (currentConsumerState.cameraVideoProducerId && currentConsumerState.cameraVideoProducerId !== producerInfo.cameraVideo?.id) {
+      if (currentConsumerState.cameraVideoConsumer) {
+        await closeClientConsumer(
+          tile.studentName,
+          'video',
+          currentConsumerState.cameraVideoConsumer,
+          currentConsumerState.cameraVideoConsumerId
+        );
+      }
+      currentConsumerState.cameraVideoConsumer = null;
+      currentConsumerState.cameraVideoConsumerId = null;
+      currentConsumerState.cameraVideoProducerId = null;
+      currentConsumerState.cameraVideoPausedOnServer = true;
+    }
+
+    if (currentConsumerState.screenVideoProducerId && currentConsumerState.screenVideoProducerId !== producerInfo.screenVideo?.id) {
+      if (currentConsumerState.screenVideoConsumer) {
+        if (!currentConsumerState.screenVideoPausedOnServer && currentConsumerState.screenVideoConsumerId) {
+          await pauseServerConsumer(currentConsumerState.screenVideoConsumerId);
+        }
+        await closeClientConsumer(
+          tile.studentName,
+          'video',
+          currentConsumerState.screenVideoConsumer,
+          currentConsumerState.screenVideoConsumerId
+        );
+      }
+      currentConsumerState.screenVideoConsumer = null;
+      currentConsumerState.screenVideoConsumerId = null;
+      currentConsumerState.screenVideoProducerId = null;
+      currentConsumerState.screenVideoPausedOnServer = true;
+    }
+
+    const activeVideoSourceType = activeVideoProducer?.sourceType === 'screen' ? 'screen' : 'camera';
+
+    if (activeVideoSourceType === 'camera') {
+      if (activeVideoProducer && !currentConsumerState.cameraVideoConsumer) {
+        setStatus({ state: 'connecting', text: `Consuming ${activeVideoProducer.sourceType} video from ${tile.studentName}...` });
+        const consumerEntry = await createConsumer(activeVideoProducer.id);
+        if (consumerEntry) {
+          currentConsumerState.cameraVideoConsumer = consumerEntry.consumer;
+          currentConsumerState.cameraVideoConsumerId = consumerEntry.consumerId;
+          currentConsumerState.cameraVideoProducerId = activeVideoProducer.id;
+          currentConsumerState.cameraVideoPausedOnServer = consumerEntry.paused ?? true;
+        }
+      }
+
+      if (currentConsumerState.cameraVideoConsumerId && currentConsumerState.cameraVideoPausedOnServer) {
+        await resumeServerConsumer(currentConsumerState.cameraVideoConsumerId);
+        currentConsumerState.cameraVideoPausedOnServer = false;
+      }
+
+      if (currentConsumerState.cameraVideoConsumer) {
+        replaceStreamTrack(tile.studentName, 'video', currentConsumerState.cameraVideoConsumer.track);
+      }
+
+      if (currentConsumerState.screenVideoConsumerId && !currentConsumerState.screenVideoPausedOnServer) {
+        await pauseServerConsumer(currentConsumerState.screenVideoConsumerId);
+        currentConsumerState.screenVideoPausedOnServer = true;
+      }
+      if (currentConsumerState.screenVideoConsumer) {
+        removeSpecificStreamTrack(tile.studentName, currentConsumerState.screenVideoConsumer.track);
+      }
+    } else if (activeVideoProducer) {
+      if (!currentConsumerState.screenVideoConsumer) {
+        setStatus({ state: 'connecting', text: `Consuming ${activeVideoProducer.sourceType} video from ${tile.studentName}...` });
+        const consumerEntry = await createConsumer(activeVideoProducer.id);
+        if (consumerEntry) {
+          currentConsumerState.screenVideoConsumer = consumerEntry.consumer;
+          currentConsumerState.screenVideoConsumerId = consumerEntry.consumerId;
+          currentConsumerState.screenVideoProducerId = activeVideoProducer.id;
+          currentConsumerState.screenVideoPausedOnServer = consumerEntry.paused ?? true;
+        }
+      }
+
+      if (currentConsumerState.screenVideoConsumerId && currentConsumerState.screenVideoPausedOnServer) {
+        await resumeServerConsumer(currentConsumerState.screenVideoConsumerId);
+        currentConsumerState.screenVideoPausedOnServer = false;
+      }
+
+      if (currentConsumerState.screenVideoConsumer) {
+        replaceStreamTrack(tile.studentName, 'video', currentConsumerState.screenVideoConsumer.track);
+      }
+
+      if (currentConsumerState.cameraVideoConsumerId && !currentConsumerState.cameraVideoPausedOnServer) {
+        await pauseServerConsumer(currentConsumerState.cameraVideoConsumerId);
+        currentConsumerState.cameraVideoPausedOnServer = true;
+      }
+      if (currentConsumerState.cameraVideoConsumer) {
+        removeSpecificStreamTrack(tile.studentName, currentConsumerState.cameraVideoConsumer.track);
+      }
+    }
+
+    if (currentConsumerState.audioProducerId && currentConsumerState.audioProducerId !== latestAudioProducer?.id) {
       if (currentConsumerState.audioConsumer) {
-        currentConsumerState.audioConsumer.close();
-        removeStreamTrack(tile.studentName, 'audio');
+        if (!currentConsumerState.audioPausedOnServer && currentConsumerState.audioConsumerId) {
+          await pauseServerConsumer(currentConsumerState.audioConsumerId);
+        }
+        await closeClientConsumer(
+          tile.studentName,
+          'audio',
+          currentConsumerState.audioConsumer,
+          currentConsumerState.audioConsumerId
+        );
       }
 
       currentConsumerState.audioConsumer = null;
+      currentConsumerState.audioConsumerId = null;
       currentConsumerState.audioProducerId = null;
+      currentConsumerState.audioPausedOnServer = true;
+    }
 
-      if (desiredAudioProducer) {
-        const consumer = await createConsumer(desiredAudioProducer.id);
-        if (consumer) {
-          currentConsumerState.audioConsumer = consumer;
-          currentConsumerState.audioProducerId = desiredAudioProducer.id;
-          tile.stream.addTrack(consumer.track);
-        }
+    if (shouldKeepAudioConsumer && latestAudioProducer && !currentConsumerState.audioConsumer) {
+      const consumerEntry = await createConsumer(latestAudioProducer.id);
+      if (consumerEntry) {
+        currentConsumerState.audioConsumer = consumerEntry.consumer;
+        currentConsumerState.audioConsumerId = consumerEntry.consumerId;
+        currentConsumerState.audioProducerId = latestAudioProducer.id;
+        currentConsumerState.audioPausedOnServer = consumerEntry.paused ?? true;
+        tile.stream.addTrack(consumerEntry.consumer.track);
       }
+    }
+
+    if (currentConsumerState.audioConsumerId) {
+      if (tile.audioEnabled && currentConsumerState.audioPausedOnServer) {
+        await resumeServerConsumer(currentConsumerState.audioConsumerId);
+        currentConsumerState.audioPausedOnServer = false;
+      } else if (!tile.audioEnabled && !currentConsumerState.audioPausedOnServer) {
+        await pauseServerConsumer(currentConsumerState.audioConsumerId);
+        currentConsumerState.audioPausedOnServer = true;
+      }
+    }
+
+    if (!shouldKeepAudioConsumer && currentConsumerState.audioConsumer) {
+      if (!currentConsumerState.audioPausedOnServer && currentConsumerState.audioConsumerId) {
+        await pauseServerConsumer(currentConsumerState.audioConsumerId);
+        currentConsumerState.audioPausedOnServer = true;
+      }
+
+      if (!latestAudioProducer) {
+        await closeClientConsumer(
+          tile.studentName,
+          'audio',
+          currentConsumerState.audioConsumer,
+          currentConsumerState.audioConsumerId
+        );
+        currentConsumerState.audioConsumer = null;
+        currentConsumerState.audioConsumerId = null;
+        currentConsumerState.audioProducerId = null;
+        currentConsumerState.audioPausedOnServer = true;
+      }
+    } else if (!latestAudioProducer && currentConsumerState.audioConsumer) {
+      if (!currentConsumerState.audioPausedOnServer && currentConsumerState.audioConsumerId) {
+        await pauseServerConsumer(currentConsumerState.audioConsumerId);
+      }
+      await closeClientConsumer(
+        tile.studentName,
+        'audio',
+        currentConsumerState.audioConsumer,
+        currentConsumerState.audioConsumerId
+      );
+      currentConsumerState.audioConsumer = null;
+      currentConsumerState.audioConsumerId = null;
+      currentConsumerState.audioProducerId = null;
+      currentConsumerState.audioPausedOnServer = true;
+    }
+
+    if (!shouldKeepAudioConsumer) {
+      currentConsumerState.audioPausedOnServer = true;
     }
 
     consumerMapRef.current.set(tile.studentName, currentConsumerState);
   }
 
+  async function pauseActiveAudioForStudent(studentName) {
+    const consumerState = consumerMapRef.current.get(studentName);
+    if (!consumerState?.audioConsumerId || consumerState.audioPausedOnServer) {
+      return;
+    }
+
+    await pauseServerConsumer(consumerState.audioConsumerId);
+    consumerMapRef.current.set(studentName, {
+      ...consumerState,
+      audioPausedOnServer: true,
+    });
+  }
+
+  function setTilesState(nextTiles) {
+    tilesRef.current = nextTiles;
+    setTiles(nextTiles);
+  }
+
+  async function focusStudent(studentName) {
+    const currentFocusedStudent = focusedStudentNameRef.current;
+    if (currentFocusedStudent && currentFocusedStudent !== studentName) {
+      await pauseActiveAudioForStudent(currentFocusedStudent);
+    }
+
+    focusedStudentNameRef.current = studentName;
+    setFocusedStudentName(studentName);
+    const nextTiles = tilesRef.current.map(tile => ({
+      ...tile,
+      audioEnabled: false,
+    }));
+    setTilesState(nextTiles);
+    await syncConsumersForTiles(nextTiles.filter(tile => tile.studentName === studentName));
+  }
+
+  async function clearFocusedStudent() {
+    const currentFocusedStudent = focusedStudentNameRef.current;
+    if (currentFocusedStudent) {
+      await pauseActiveAudioForStudent(currentFocusedStudent);
+    }
+
+    focusedStudentNameRef.current = null;
+    setFocusedStudentName(null);
+    const nextTiles = tilesRef.current.map(tile => ({
+      ...tile,
+      audioEnabled: false,
+    }));
+    setTilesState(nextTiles);
+  }
+
+  async function syncConsumersForTiles(targetTiles) {
+    for (const tile of targetTiles) {
+      const producerInfo = producerMapRef.current.get(tile.studentName);
+      if (producerInfo) {
+        await syncStudentConsumers(tile, producerInfo);
+      }
+    }
+  }
+
   function removeStudentConsumption(studentName) {
     const consumerState = consumerMapRef.current.get(studentName);
-    if (consumerState?.videoConsumer) consumerState.videoConsumer.close();
-    if (consumerState?.audioConsumer) consumerState.audioConsumer.close();
     consumerMapRef.current.delete(studentName);
+
+    if (consumerState?.cameraVideoConsumer) {
+      void closeClientConsumer(studentName, 'video', consumerState.cameraVideoConsumer, consumerState.cameraVideoConsumerId);
+    }
+    if (consumerState?.screenVideoConsumer) {
+      void closeClientConsumer(studentName, 'video', consumerState.screenVideoConsumer, consumerState.screenVideoConsumerId);
+    }
+    if (consumerState?.audioConsumer) {
+      void closeClientConsumer(studentName, 'audio', consumerState.audioConsumer, consumerState.audioConsumerId);
+    }
 
     const stream = streamMapRef.current.get(studentName);
     if (stream) {
@@ -336,13 +622,18 @@ function StaffPage() {
     const nextTiles = buildNextTiles(tilesRef.current, nextProducerMap);
     const nextStudentNames = new Set(nextTiles.map(tile => tile.studentName));
 
+    if (focusedStudentNameRef.current && !nextStudentNames.has(focusedStudentNameRef.current)) {
+      focusedStudentNameRef.current = null;
+      setFocusedStudentName(null);
+    }
+
     for (const studentName of [...consumerMapRef.current.keys()]) {
       if (!nextStudentNames.has(studentName)) {
         removeStudentConsumption(studentName);
       }
     }
 
-    setTiles(nextTiles);
+    setTilesState(nextTiles);
 
     for (const tile of nextTiles) {
       const producerInfo = nextProducerMap.get(tile.studentName);
@@ -364,12 +655,15 @@ function StaffPage() {
   }
 
   function toggleRemoteAudio(studentName) {
-    setTiles(current =>
-      current.map(tile => {
+    if (focusedStudentNameRef.current !== studentName) return;
+
+    const nextTiles = tilesRef.current.map(tile => {
         if (tile.studentName !== studentName) return tile;
         return { ...tile, audioEnabled: !tile.audioEnabled };
-      })
-    );
+      });
+
+    setTilesState(nextTiles);
+    void syncConsumersForTiles(nextTiles.filter(tile => tile.studentName === studentName));
   }
 
   async function switchTileSource(studentName, sourceType) {
@@ -388,7 +682,7 @@ function StaffPage() {
       };
     });
 
-    setTiles(nextTiles);
+    setTilesState(nextTiles);
 
     const updatedTile = nextTiles.find(tile => tile.studentName === studentName);
     const producerInfo = producerMapRef.current.get(studentName);
@@ -461,6 +755,8 @@ function StaffPage() {
     streamMapRef.current = new Map();
     consumerMapRef.current = new Map();
     tileVideoRefs.current.clear();
+    focusedStudentNameRef.current = null;
+    setFocusedStudentName(null);
     setTiles([]);
     setSidebarOpen(true);
   }
@@ -479,6 +775,15 @@ function StaffPage() {
     } catch (err) {
       setError(err.message || 'Failed to send chat message.');
     }
+  }
+
+  async function handleFocusedStudentChange(studentName) {
+    if (studentName) {
+      await focusStudent(studentName);
+      return;
+    }
+
+    await clearFocusedStudent();
   }
 
   return (
@@ -518,6 +823,8 @@ function StaffPage() {
           tiles={tiles}
           toggleRemoteAudio={toggleRemoteAudio}
           switchTileSource={switchTileSource}
+          focusedStudentName={focusedStudentName}
+          setFocusedStudentName={handleFocusedStudentChange}
         />
       )}
     </AppShell>

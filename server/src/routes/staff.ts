@@ -1,5 +1,14 @@
 import { Router, Request, Response } from 'express';
-import { cleanupTransport, getOrCreateRoom, routers, registerTransport, transports, producers } from '../rooms.js';
+import {
+  cleanupTransport,
+  consumers,
+  getOrCreateRoom,
+  producers,
+  registerConsumer,
+  registerTransport,
+  routers,
+  transports,
+} from '../rooms.js';
 import { getOrCreateRoomRouter, createWebRtcTransport } from '../utils.js';
 
 const router = Router();
@@ -97,16 +106,106 @@ router.post('/api/staff/consume', async (req: Request, res: Response) => {
     return;
   }
 
-  const consumer = await transportEntry.transport.consume({ producerId, rtpCapabilities });
+  const producerEntry = producers.get(producerId);
+  if (!producerEntry) {
+    res.status(404).json({ error: 'producer not found' });
+    return;
+  }
+
+  const consumer = await transportEntry.transport.consume({
+    producerId,
+    rtpCapabilities,
+    paused: true,
+  });
+  registerConsumer(consumer, {
+    transportId,
+    roomId: transportEntry.roomId,
+    staffName: transportEntry.participantName,
+    studentName: producerEntry.studentName,
+    producerId,
+    kind: consumer.kind,
+    sourceType: producerEntry.sourceType,
+  });
   console.log(`[consume] transport=${transportId}, producer=${producerId}, consumer=${consumer.id}`);
 
   res.json({
     id: consumer.id,
+    consumerId: consumer.id,
     producerId: consumer.producerId,
     kind: consumer.kind,
     rtpParameters: consumer.rtpParameters,
     type: consumer.type,
+    paused: consumer.paused,
   });
+});
+
+router.post('/api/staff/pause-consumer', async (req: Request, res: Response) => {
+  const { consumerId } = req.body;
+  if (!consumerId) {
+    res.status(400).json({ error: 'consumerId is required' });
+    return;
+  }
+
+  const consumerEntry = consumers.get(consumerId);
+  if (!consumerEntry) {
+    res.status(404).json({ error: 'consumer not found' });
+    return;
+  }
+
+  const transportEntry = transports.get(consumerEntry.transportId);
+  if (!transportEntry || transportEntry.role !== 'staff') {
+    res.status(404).json({ error: 'staff consumer transport not found' });
+    return;
+  }
+
+  await consumerEntry.consumer.pause();
+  res.json({ ok: true, consumerId, paused: true });
+});
+
+router.post('/api/staff/resume-consumer', async (req: Request, res: Response) => {
+  const { consumerId } = req.body;
+  if (!consumerId) {
+    res.status(400).json({ error: 'consumerId is required' });
+    return;
+  }
+
+  const consumerEntry = consumers.get(consumerId);
+  if (!consumerEntry) {
+    res.status(404).json({ error: 'consumer not found' });
+    return;
+  }
+
+  const transportEntry = transports.get(consumerEntry.transportId);
+  if (!transportEntry || transportEntry.role !== 'staff') {
+    res.status(404).json({ error: 'staff consumer transport not found' });
+    return;
+  }
+
+  await consumerEntry.consumer.resume();
+  res.json({ ok: true, consumerId, paused: false });
+});
+
+router.post('/api/staff/close-consumer', (req: Request, res: Response) => {
+  const { consumerId } = req.body;
+  if (!consumerId) {
+    res.status(400).json({ error: 'consumerId is required' });
+    return;
+  }
+
+  const consumerEntry = consumers.get(consumerId);
+  if (!consumerEntry) {
+    res.status(404).json({ error: 'consumer not found' });
+    return;
+  }
+
+  const transportEntry = transports.get(consumerEntry.transportId);
+  if (!transportEntry || transportEntry.role !== 'staff') {
+    res.status(404).json({ error: 'staff consumer transport not found' });
+    return;
+  }
+
+  consumerEntry.consumer.close();
+  res.json({ ok: true, consumerId });
 });
 
 router.post('/api/staff/leave', (req: Request, res: Response) => {
