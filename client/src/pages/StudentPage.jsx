@@ -224,6 +224,8 @@ function StudentPage() {
         return;
       }
 
+      videoTrack.contentHint = 'detail';
+
       screenStreamRef.current = stream;
       videoTrack.addEventListener('ended', () => {
         stopScreenShare();
