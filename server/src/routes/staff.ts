@@ -139,6 +139,66 @@ router.post('/api/staff/consume', async (req: Request, res: Response) => {
   });
 });
 
+router.post('/api/staff/consume-batch', async (req: Request, res: Response) => {
+  const { transportId, producerIds, rtpCapabilities } = req.body;
+  if (!transportId || !Array.isArray(producerIds) || !producerIds.length || !rtpCapabilities) {
+    res.status(400).json({ error: 'transportId, producerIds, and rtpCapabilities are required' });
+    return;
+  }
+
+  const transportEntry = transports.get(transportId);
+  if (!transportEntry) {
+    res.status(404).json({ error: 'transport not found' });
+    return;
+  }
+
+  const uniqueProducerIds = [...new Set(producerIds)];
+  const missingProducerId = uniqueProducerIds.find(producerId => !producers.has(producerId));
+  if (missingProducerId) {
+    res.status(404).json({ error: `producer not found: ${missingProducerId}` });
+    return;
+  }
+
+  const consumerPayloads = await Promise.all(
+    uniqueProducerIds.map(async producerId => {
+      const producerEntry = producers.get(producerId);
+      if (!producerEntry) {
+        throw new Error(`producer not found: ${producerId}`);
+      }
+
+      const consumer = await transportEntry.transport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: true,
+      });
+
+      registerConsumer(consumer, {
+        transportId,
+        roomId: transportEntry.roomId,
+        staffName: transportEntry.participantName,
+        studentName: producerEntry.studentName,
+        producerId,
+        kind: consumer.kind,
+        sourceType: producerEntry.sourceType,
+      });
+
+      console.log(`[consume-batch] transport=${transportId}, producer=${producerId}, consumer=${consumer.id}`);
+
+      return {
+        id: consumer.id,
+        consumerId: consumer.id,
+        producerId: consumer.producerId,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters,
+        type: consumer.type,
+        paused: consumer.paused,
+      };
+    })
+  );
+
+  res.json(consumerPayloads);
+});
+
 router.post('/api/staff/pause-consumer', async (req: Request, res: Response) => {
   const { consumerId } = req.body;
   if (!consumerId) {

@@ -240,16 +240,9 @@ function StaffPage() {
     return nextTiles;
   }
 
-  async function createConsumer(producerId) {
+  async function consumeClientConsumer(consumerData) {
     const transport = recvTransportRef.current;
-    const device = deviceRef.current;
-    if (!transport || !device) return null;
-
-    const consumerData = await apiCall('POST', '/api/staff/consume', {
-      transportId: transport.id,
-      producerId,
-      rtpCapabilities: device.rtpCapabilities,
-    });
+    if (!transport) return null;
 
     const consumer = await transport.consume({
       id: consumerData.id,
@@ -262,7 +255,43 @@ function StaffPage() {
       consumer,
       consumerId: consumerData.consumerId || consumerData.id,
       paused: consumerData.paused ?? false,
+      producerId: consumerData.producerId,
     };
+  }
+
+  async function createConsumer(producerId) {
+    const transport = recvTransportRef.current;
+    const device = deviceRef.current;
+    if (!transport || !device) return null;
+
+    const consumerData = await apiCall('POST', '/api/staff/consume', {
+      transportId: transport.id,
+      producerId,
+      rtpCapabilities: device.rtpCapabilities,
+    });
+
+    return consumeClientConsumer(consumerData);
+  }
+
+  async function createConsumersBatch(producerIds) {
+    const transport = recvTransportRef.current;
+    const device = deviceRef.current;
+    if (!transport || !device || !producerIds.length) return new Map();
+
+    const consumerPayloads = await apiCall('POST', '/api/staff/consume-batch', {
+      transportId: transport.id,
+      producerIds,
+      rtpCapabilities: device.rtpCapabilities,
+    });
+
+    const entries = await Promise.all(
+      consumerPayloads.map(async consumerData => {
+        const consumerEntry = await consumeClientConsumer(consumerData);
+        return consumerEntry ? [consumerEntry.producerId, consumerEntry] : null;
+      })
+    );
+
+    return new Map(entries.filter(Boolean));
   }
 
   async function pauseServerConsumer(consumerId) {
@@ -334,7 +363,7 @@ function StaffPage() {
     }
   }
 
-  async function syncStudentConsumers(tile, producerInfo) {
+  async function syncStudentConsumers(tile, producerInfo, preparedConsumers = new Map()) {
     const activeVideoProducer =
       tile.activeSourceType === 'screen'
         ? producerInfo.screenVideo || producerInfo.cameraVideo
@@ -395,7 +424,7 @@ function StaffPage() {
     if (activeVideoSourceType === 'camera') {
       if (activeVideoProducer && !currentConsumerState.cameraVideoConsumer) {
         setStatus({ state: 'connecting', text: `Consuming ${activeVideoProducer.sourceType} video from ${tile.studentName}...` });
-        const consumerEntry = await createConsumer(activeVideoProducer.id);
+        const consumerEntry = preparedConsumers.get(activeVideoProducer.id) || await createConsumer(activeVideoProducer.id);
         if (consumerEntry) {
           currentConsumerState.cameraVideoConsumer = consumerEntry.consumer;
           currentConsumerState.cameraVideoConsumerId = consumerEntry.consumerId;
@@ -423,7 +452,7 @@ function StaffPage() {
     } else if (activeVideoProducer) {
       if (!currentConsumerState.screenVideoConsumer) {
         setStatus({ state: 'connecting', text: `Consuming ${activeVideoProducer.sourceType} video from ${tile.studentName}...` });
-        const consumerEntry = await createConsumer(activeVideoProducer.id);
+        const consumerEntry = preparedConsumers.get(activeVideoProducer.id) || await createConsumer(activeVideoProducer.id);
         if (consumerEntry) {
           currentConsumerState.screenVideoConsumer = consumerEntry.consumer;
           currentConsumerState.screenVideoConsumerId = consumerEntry.consumerId;
@@ -470,7 +499,7 @@ function StaffPage() {
     }
 
     if (shouldKeepAudioConsumer && latestAudioProducer && !currentConsumerState.audioConsumer) {
-      const consumerEntry = await createConsumer(latestAudioProducer.id);
+      const consumerEntry = preparedConsumers.get(latestAudioProducer.id) || await createConsumer(latestAudioProducer.id);
       if (consumerEntry) {
         currentConsumerState.audioConsumer = consumerEntry.consumer;
         currentConsumerState.audioConsumerId = consumerEntry.consumerId;
@@ -581,10 +610,42 @@ function StaffPage() {
   }
 
   async function syncConsumersForTiles(targetTiles) {
+    const missingProducerIds = new Set();
+
+    for (const tile of targetTiles) {
+      const producerInfo = producerMapRef.current.get(tile.studentName);
+      if (!producerInfo) continue;
+
+      const currentConsumerState = consumerMapRef.current.get(tile.studentName) || {};
+      const activeVideoProducer =
+        tile.activeSourceType === 'screen'
+          ? producerInfo.screenVideo || producerInfo.cameraVideo
+          : producerInfo.cameraVideo || producerInfo.screenVideo;
+      const latestAudioProducer = producerInfo.cameraAudio || producerInfo.screenAudio;
+      const activeVideoSourceType = activeVideoProducer?.sourceType === 'screen' ? 'screen' : 'camera';
+      const shouldKeepAudioConsumer = focusedStudentNameRef.current === tile.studentName;
+
+      if (activeVideoSourceType === 'screen') {
+        if (activeVideoProducer && !currentConsumerState.screenVideoConsumer) {
+          missingProducerIds.add(activeVideoProducer.id);
+        }
+      } else if (activeVideoProducer && !currentConsumerState.cameraVideoConsumer) {
+        missingProducerIds.add(activeVideoProducer.id);
+      }
+
+      if (shouldKeepAudioConsumer && latestAudioProducer && !currentConsumerState.audioConsumer) {
+        missingProducerIds.add(latestAudioProducer.id);
+      }
+    }
+
+    const preparedConsumers = missingProducerIds.size
+      ? await createConsumersBatch([...missingProducerIds])
+      : new Map();
+
     for (const tile of targetTiles) {
       const producerInfo = producerMapRef.current.get(tile.studentName);
       if (producerInfo) {
-        await syncStudentConsumers(tile, producerInfo);
+        await syncStudentConsumers(tile, producerInfo, preparedConsumers);
       }
     }
   }
