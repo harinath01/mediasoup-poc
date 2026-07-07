@@ -245,6 +245,38 @@ router.post('/api/staff/resume-consumer', async (req: Request, res: Response) =>
   res.json({ ok: true, consumerId, paused: false });
 });
 
+router.post('/api/staff/set-consumer-layers', async (req: Request, res: Response) => {
+  const { consumerId, spatialLayer, temporalLayer } = req.body;
+  if (!consumerId || typeof spatialLayer !== 'number') {
+    res.status(400).json({ error: 'consumerId and spatialLayer are required' });
+    return;
+  }
+
+  const consumerEntry = consumers.get(consumerId);
+  if (!consumerEntry) {
+    res.status(404).json({ error: 'consumer not found' });
+    return;
+  }
+
+  if (consumerEntry.kind !== 'video') {
+    res.status(400).json({ error: 'set-consumer-layers supports video consumers only' });
+    return;
+  }
+
+  const transportEntry = transports.get(consumerEntry.transportId);
+  if (!transportEntry || transportEntry.role !== 'staff') {
+    res.status(404).json({ error: 'staff consumer transport not found' });
+    return;
+  }
+
+  await consumerEntry.consumer.setPreferredLayers({
+    spatialLayer,
+    ...(typeof temporalLayer === 'number' ? { temporalLayer } : {}),
+  });
+
+  res.json({ ok: true, consumerId, spatialLayer, temporalLayer: temporalLayer ?? null });
+});
+
 router.post('/api/staff/close-consumer', (req: Request, res: Response) => {
   const { consumerId } = req.body;
   if (!consumerId) {

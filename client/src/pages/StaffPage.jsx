@@ -306,6 +306,10 @@ function StaffPage() {
     await apiCall('POST', '/api/staff/close-consumer', { consumerId });
   }
 
+  async function setServerConsumerLayers(consumerId, spatialLayer) {
+    await apiCall('POST', '/api/staff/set-consumer-layers', { consumerId, spatialLayer });
+  }
+
   function removeStreamTrack(studentName, kind) {
     const stream = streamMapRef.current.get(studentName);
     if (!stream) return;
@@ -376,10 +380,12 @@ function StaffPage() {
       cameraVideoConsumerId: null,
       cameraVideoProducerId: null,
       cameraVideoPausedOnServer: true,
+      cameraVideoSpatialLayer: null,
       screenVideoConsumer: null,
       screenVideoConsumerId: null,
       screenVideoProducerId: null,
       screenVideoPausedOnServer: true,
+      screenVideoSpatialLayer: null,
       audioConsumer: null,
       audioConsumerId: null,
       audioProducerId: null,
@@ -399,6 +405,7 @@ function StaffPage() {
       currentConsumerState.cameraVideoConsumerId = null;
       currentConsumerState.cameraVideoProducerId = null;
       currentConsumerState.cameraVideoPausedOnServer = true;
+      currentConsumerState.cameraVideoSpatialLayer = null;
     }
 
     if (currentConsumerState.screenVideoProducerId && currentConsumerState.screenVideoProducerId !== producerInfo.screenVideo?.id) {
@@ -417,9 +424,11 @@ function StaffPage() {
       currentConsumerState.screenVideoConsumerId = null;
       currentConsumerState.screenVideoProducerId = null;
       currentConsumerState.screenVideoPausedOnServer = true;
+      currentConsumerState.screenVideoSpatialLayer = null;
     }
 
     const activeVideoSourceType = activeVideoProducer?.sourceType === 'screen' ? 'screen' : 'camera';
+    const desiredSpatialLayer = focusedStudentNameRef.current === tile.studentName ? 1 : 0;
 
     if (activeVideoSourceType === 'camera') {
       if (activeVideoProducer && !currentConsumerState.cameraVideoConsumer) {
@@ -438,6 +447,14 @@ function StaffPage() {
         currentConsumerState.cameraVideoPausedOnServer = false;
       }
 
+      if (
+        currentConsumerState.cameraVideoConsumerId &&
+        currentConsumerState.cameraVideoSpatialLayer !== desiredSpatialLayer
+      ) {
+        await setServerConsumerLayers(currentConsumerState.cameraVideoConsumerId, desiredSpatialLayer);
+        currentConsumerState.cameraVideoSpatialLayer = desiredSpatialLayer;
+      }
+
       if (currentConsumerState.cameraVideoConsumer) {
         replaceStreamTrack(tile.studentName, 'video', currentConsumerState.cameraVideoConsumer.track);
       }
@@ -446,6 +463,7 @@ function StaffPage() {
         await pauseServerConsumer(currentConsumerState.screenVideoConsumerId);
         currentConsumerState.screenVideoPausedOnServer = true;
       }
+      currentConsumerState.screenVideoSpatialLayer = null;
       if (currentConsumerState.screenVideoConsumer) {
         removeSpecificStreamTrack(tile.studentName, currentConsumerState.screenVideoConsumer.track);
       }
@@ -466,6 +484,14 @@ function StaffPage() {
         currentConsumerState.screenVideoPausedOnServer = false;
       }
 
+      if (
+        currentConsumerState.screenVideoConsumerId &&
+        currentConsumerState.screenVideoSpatialLayer !== desiredSpatialLayer
+      ) {
+        await setServerConsumerLayers(currentConsumerState.screenVideoConsumerId, desiredSpatialLayer);
+        currentConsumerState.screenVideoSpatialLayer = desiredSpatialLayer;
+      }
+
       if (currentConsumerState.screenVideoConsumer) {
         replaceStreamTrack(tile.studentName, 'video', currentConsumerState.screenVideoConsumer.track);
       }
@@ -474,6 +500,7 @@ function StaffPage() {
         await pauseServerConsumer(currentConsumerState.cameraVideoConsumerId);
         currentConsumerState.cameraVideoPausedOnServer = true;
       }
+      currentConsumerState.cameraVideoSpatialLayer = null;
       if (currentConsumerState.cameraVideoConsumer) {
         removeSpecificStreamTrack(tile.studentName, currentConsumerState.cameraVideoConsumer.track);
       }

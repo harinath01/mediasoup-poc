@@ -189,6 +189,10 @@ function StudentPage() {
     if (videoTrack && !producersRef.current.cameraVideo) {
       producersRef.current.cameraVideo = await transport.produce({
         track: videoTrack,
+        encodings: [
+          { rid: 'low', maxBitrate: 180_000, scaleResolutionDownBy: 2 },
+          { rid: 'high', maxBitrate: 900_000, scaleResolutionDownBy: 1 },
+        ],
         appData: { sourceType: 'camera', displayLabel: 'Camera' },
       });
     }
@@ -233,6 +237,10 @@ function StudentPage() {
 
       producersRef.current.screenVideo = await transport.produce({
         track: videoTrack,
+        encodings: [
+          { rid: 'low', maxBitrate: 250_000, scaleResolutionDownBy: 2 },
+          { rid: 'high', maxBitrate: 1_200_000, scaleResolutionDownBy: 1 },
+        ],
         appData: {
           sourceType: 'screen',
           displayLabel: videoTrack.label || 'Screen Share',
