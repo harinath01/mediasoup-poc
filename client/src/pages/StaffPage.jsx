@@ -29,7 +29,6 @@ function StaffPage() {
   const streamMapRef = useRef(new Map());
   const producerMapRef = useRef(new Map());
   const consumerMapRef = useRef(new Map());
-  const pollIntervalRef = useRef(null);
   const currentRoomIdRef = useRef('');
   const hasLeftRef = useRef(false);
   const focusedStudentNameRef = useRef(null);
@@ -38,7 +37,7 @@ function StaffPage() {
   const tilesRef = useRef([]);
   const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
   const joinedName = roomInfo.split(' | ')[1]?.replace('Staff: ', '') || '';
-  const { messages, presence, connected: chatConnected, chatError, sendMessage } = useRoomChat({
+  const { messages, presence, mediaProducers, connected: chatConnected, chatError, sendMessage } = useRoomChat({
     enabled: joined,
     roomId: joinedRoomId,
     name: joinedName,
@@ -79,6 +78,11 @@ function StaffPage() {
       void syncConsumersForTiles(nextTiles);
     }
   }, [focusedStudentName, joined]);
+
+  useEffect(() => {
+    if (!joined || !recvTransportRef.current) return;
+    void syncRoomProducers(mediaProducers);
+  }, [joined, mediaProducers]);
 
   useEffect(() => {
     function handlePageHide() {
@@ -179,7 +183,6 @@ function StaffPage() {
       const producers = await apiCall('GET', `/api/staff/room/${roomId}/producers`);
       await syncRoomProducers(producers);
 
-      pollIntervalRef.current = window.setInterval(pollNewProducers, 3000);
       setStatus({ state: 'connected', text: 'Monitoring Active' });
     } catch (err) {
       setError(err.message || 'Failed to join room.');
@@ -810,17 +813,6 @@ function StaffPage() {
     }
   }
 
-  async function pollNewProducers() {
-    if (!recvTransportRef.current || !currentRoomIdRef.current) return;
-
-    try {
-      const producers = await apiCall('GET', `/api/staff/room/${currentRoomIdRef.current}/producers`);
-      await syncRoomProducers(producers);
-    } catch (err) {
-      console.error('failed to poll producers', err);
-    }
-  }
-
   function toggleRemoteAudio(studentName) {
     if (focusedStudentNameRef.current !== studentName) return;
 
@@ -883,11 +875,6 @@ function StaffPage() {
   }
 
   function cleanupStaffSession(resetUi) {
-    if (pollIntervalRef.current) {
-      window.clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-
     if (recvTransportRef.current) {
       recvTransportRef.current.close();
       recvTransportRef.current = null;

@@ -3,6 +3,7 @@ import {
   cleanupTransport,
   consumers,
   getOrCreateRoom,
+  getRoomProducerSummaries,
   producers,
   registerConsumer,
   registerTransport,
@@ -93,16 +94,9 @@ router.get('/api/staff/room/:roomId/producers', (req: Request, res: Response) =>
   }
 
   const roomProducers = Array.from(producers.values())
-    .filter(p => p.roomId === roomId)
-    .map(p => ({
-      id: p.producer.id,
-      kind: p.producer.kind,
-      studentName: p.studentName,
-      sourceType: p.sourceType,
-      displayLabel: p.displayLabel || null,
-    }));
+    .filter(p => p.roomId === roomId);
 
-  res.json(roomProducers);
+  res.json(getRoomProducerSummaries(roomId));
 });
 
 router.post('/api/staff/consume', async (req: Request, res: Response) => {

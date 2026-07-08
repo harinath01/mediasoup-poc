@@ -1,5 +1,5 @@
 import { types as mediasoupTypes } from 'mediasoup';
-import { clearChatRoom } from './chat.js';
+import { broadcastMediaState, clearChatRoom } from './chat.js';
 
 export interface Room {
   id: string;
@@ -63,6 +63,18 @@ export const transports = new Map<string, TransportEntry>();
 export const producers = new Map<string, ProducerEntry>();
 export const consumers = new Map<string, ConsumerEntry>();
 
+export function getRoomProducerSummaries(roomId: string) {
+  return Array.from(producers.values())
+    .filter(p => p.roomId === roomId)
+    .map(p => ({
+      id: p.producer.id,
+      kind: p.producer.kind,
+      studentName: p.studentName,
+      sourceType: p.sourceType,
+      displayLabel: p.displayLabel || null,
+    }));
+}
+
 function removeParticipant(roomId: string, participantName: string, role: ParticipantRole) {
   const room = rooms.get(roomId);
   if (!room) return;
@@ -85,7 +97,11 @@ function removeParticipant(roomId: string, participantName: string, role: Partic
 }
 
 export function removeProducer(producerId: string) {
+  const producerEntry = producers.get(producerId);
   producers.delete(producerId);
+  if (producerEntry) {
+    broadcastMediaState(producerEntry.roomId, getRoomProducerSummaries(producerEntry.roomId));
+  }
 }
 
 export function removeConsumer(consumerId: string) {
@@ -114,6 +130,7 @@ export function registerProducer(
   details: Omit<ProducerEntry, 'producer'>
 ) {
   producers.set(producer.id, { producer, ...details });
+  broadcastMediaState(details.roomId, getRoomProducerSummaries(details.roomId));
 
   producer.on('transportclose', () => {
     removeProducer(producer.id);
@@ -148,6 +165,7 @@ export function cleanupTransport(transportId: string) {
   if (!entry) return;
 
   transports.delete(transportId);
+  let shouldBroadcastMediaState = false;
 
   for (const [consumerId, consumerEntry] of consumers.entries()) {
     if (consumerEntry.transportId !== transportId) continue;
@@ -159,6 +177,11 @@ export function cleanupTransport(transportId: string) {
     if (producerEntry.transportId !== transportId) continue;
     producerEntry.producer.close();
     producers.delete(producerId);
+    shouldBroadcastMediaState = true;
+  }
+
+  if (shouldBroadcastMediaState) {
+    broadcastMediaState(entry.roomId, getRoomProducerSummaries(entry.roomId));
   }
 
   removeParticipant(entry.roomId, entry.participantName, entry.role);

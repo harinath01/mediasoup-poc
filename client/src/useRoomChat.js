@@ -15,6 +15,7 @@ export function useRoomChat({ enabled, roomId, name, role }) {
   const socketRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [presence, setPresence] = useState({ students: [], staff: [] });
+  const [mediaProducers, setMediaProducers] = useState([]);
   const [connected, setConnected] = useState(false);
   const [chatError, setChatError] = useState('');
 
@@ -24,6 +25,7 @@ export function useRoomChat({ enabled, roomId, name, role }) {
     if (!enabled || !roomId || !name || !role) {
       setMessages([]);
       setPresence({ students: [], staff: [] });
+      setMediaProducers([]);
       setConnected(false);
       setChatError('');
       return undefined;
@@ -66,10 +68,15 @@ export function useRoomChat({ enabled, roomId, name, role }) {
       setChatError(error?.message || 'Failed to connect chat.');
     }
 
+    function handleMediaProducers(nextMediaProducers) {
+      setMediaProducers(nextMediaProducers || []);
+    }
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('chat:message', handleMessage);
     socket.on('chat:presence', handlePresence);
+    socket.on('media:producers', handleMediaProducers);
     socket.on('connect_error', handleConnectError);
 
     return () => {
@@ -78,6 +85,7 @@ export function useRoomChat({ enabled, roomId, name, role }) {
       socket.off('disconnect', handleDisconnect);
       socket.off('chat:message', handleMessage);
       socket.off('chat:presence', handlePresence);
+      socket.off('media:producers', handleMediaProducers);
       socket.off('connect_error', handleConnectError);
       socket.disconnect();
       socketRef.current = null;
@@ -105,6 +113,7 @@ export function useRoomChat({ enabled, roomId, name, role }) {
   return {
     messages,
     presence,
+    mediaProducers,
     connected,
     chatError,
     sendMessage,

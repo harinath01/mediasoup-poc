@@ -38,6 +38,7 @@ interface SendMessagePayload {
 
 const MAX_ROOM_MESSAGES = 100;
 const roomState = new Map<string, ChatRoomState>();
+let socketServerRef: SocketServer | null = null;
 
 function getOrCreateRoomState(roomId: string): ChatRoomState {
   const existing = roomState.get(roomId);
@@ -109,7 +110,13 @@ export function clearChatRoom(roomId: string) {
   roomState.delete(roomId);
 }
 
+export function broadcastMediaState(roomId: string, producers: unknown[]) {
+  if (!socketServerRef) return;
+  socketServerRef.to(roomId).emit('media:producers', producers);
+}
+
 export function registerChatHandlers(io: SocketServer) {
+  socketServerRef = io;
   io.on('connection', socket => {
     socket.on('chat:join', (payload: JoinPayload, callback?: (response: unknown) => void) => {
       const roomId = payload.roomId?.trim();
