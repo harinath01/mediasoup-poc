@@ -1,0 +1,13 @@
+---
+apt_dependencies:
+  - build-essential
+  - ca-certificates
+  - curl
+  - git
+  - nginx
+  - pkg-config
+  - python3
+  - certbot
+  - python3-certbot
+  - rsync
+  - supervisor

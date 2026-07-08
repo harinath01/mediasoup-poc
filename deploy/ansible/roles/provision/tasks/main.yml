@@ -1,0 +1,155 @@
+---
+- name: Refresh apt package index
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install system dependencies
+  ansible.builtin.apt:
+    name: "{{ apt_dependencies }}"
+    state: present
+
+- name: Check current Node.js version
+  ansible.builtin.command: node --version
+  register: node_version
+  changed_when: false
+  failed_when: false
+
+- name: Configure NodeSource repository for Node.js {{ node_major_version }}
+  ansible.builtin.shell: |
+    curl -fsSL https://deb.nodesource.com/setup_{{ node_major_version }}.x | bash -
+  when: node_version.rc != 0 or not (node_version.stdout is match('^v' ~ node_major_version ~ '\\.'))
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+
+- name: Install pnpm {{ pnpm_version }}
+  ansible.builtin.shell: |
+    if ! command -v pnpm >/dev/null 2>&1 || [ "$(pnpm --version)" != "{{ pnpm_version }}" ]; then
+      npm install -g pnpm@{{ pnpm_version }}
+    fi
+  args:
+    executable: /bin/bash
+
+- name: Ensure application directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+  loop:
+    - "{{ app_dir }}"
+    - "{{ app_dir }}/server/logs"
+    - "{{ app_dir }}/client/logs"
+
+- name: Install supervisor program definition
+  ansible.builtin.template:
+    src: mediasoup-poc-supervisor.conf.j2
+    dest: /etc/supervisor/conf.d/mediasoup-poc.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure supervisor is running
+  ansible.builtin.service:
+    name: supervisor
+    state: started
+    enabled: true
+
+- name: Ensure ACME webroot exists
+  ansible.builtin.file:
+    path: /var/www/certbot
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+
+- name: Check DNS resolution for {{ app_domain }}
+  ansible.builtin.command: getent ahostsv4 {{ app_domain }}
+  register: domain_resolution
+  changed_when: false
+
+- name: Fail if {{ app_domain }} does not resolve to the target IP
+  ansible.builtin.fail:
+    msg: >-
+      {{ app_domain }} must resolve to {{ ansible_host }} before requesting a Let's Encrypt certificate.
+      Current resolution output: {{ domain_resolution.stdout | default('no result') }}
+  when: ansible_host not in domain_resolution.stdout
+
+- name: Check if Let's Encrypt certificate already exists
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ app_domain }}/fullchain.pem"
+  register: letsencrypt_cert
+
+- name: Install bootstrap nginx site
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: /etc/nginx/sites-available/mediasoup-poc.conf
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    nginx_tls_enabled: false
+
+- name: Enable nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/mediasoup-poc.conf
+    dest: /etc/nginx/sites-enabled/mediasoup-poc.conf
+    state: link
+
+- name: Disable default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Validate nginx bootstrap config
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is running
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: Reload nginx bootstrap config
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+
+- name: Obtain Let's Encrypt certificate
+  ansible.builtin.command: >-
+    certbot certonly --webroot -w /var/www/certbot
+    -d {{ app_domain }}
+    --agree-tos
+    --non-interactive
+    {% if letsencrypt_email | length > 0 %}
+    --email {{ letsencrypt_email }}
+    {% else %}
+    --register-unsafely-without-email
+    {% endif %}
+  when: not letsencrypt_cert.stat.exists
+  register: certbot_issue
+  changed_when: "'Congratulations' in certbot_issue.stdout or 'success' in (certbot_issue.stdout | lower)"
+
+- name: Install final nginx TLS site
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: /etc/nginx/sites-available/mediasoup-poc.conf
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    nginx_tls_enabled: true
+
+- name: Validate final nginx config
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded

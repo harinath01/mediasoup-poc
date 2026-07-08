@@ -1,16 +1,13 @@
 ---
-- name: Provision mediasoup POC on Hetzner
+- name: Deploy mediasoup POC application
   hosts: all
   become: true
   vars:
     app_user: ubuntu
     app_dir: "/home/{{ app_user }}/mediasoup-poc"
     app_domain: liveproctoring.tpsentinel.com
-    letsencrypt_email: ""
     mediasoup_announced_ip: "{{ ansible_host }}"
     server_port: 3001
-    node_major_version: 22
     pnpm_version: 10.13.1
   roles:
-    - provision
     - app_deploy

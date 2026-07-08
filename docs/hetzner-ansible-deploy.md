@@ -2,6 +2,11 @@
 
 This repository now includes a bootstrap path for provisioning a fresh Hetzner Ubuntu machine, building the app, and starting it under `supervisor`.
 
+Ansible is split into two roles:
+
+- `deploy/ansible/roles/provision`: machine setup, Node/pnpm, supervisor, nginx, TLS
+- `deploy/ansible/roles/app_deploy`: application install, build, and service restart
+
 ## What it does
 
 The deployment flow is:
@@ -65,6 +70,18 @@ deploy/bootstrap-hetzner.sh \
   --domain liveproctoring.tpsentinel.com
 ```
 
+For later application-only updates, use:
+
+```bash
+chmod +x deploy/deploy-update.sh
+
+deploy/deploy-update.sh \
+  --host <server-public-ip> \
+  --user ubuntu \
+  --user-password '<ubuntu-password>' \
+  --domain liveproctoring.tpsentinel.com
+```
+
 Optional with a real Let's Encrypt contact email:
 
 ```bash
@@ -94,9 +111,10 @@ Optional flags:
 - The service is installed in supervisor as `mediasoup-poc`.
 - After deployment, open `https://liveproctoring.tpsentinel.com/` instead of hitting port `3001` directly.
 
-## Redeploy after enabling HTTPS
+## Redeploy
 
-If you already ran the bootstrap once before the HTTPS changes, just rerun the same command. The playbook is designed to update the machine in place.
+- Use `deploy/bootstrap-hetzner.sh` for first-time provisioning or infrastructure changes.
+- Use `deploy/deploy-update.sh` for normal app deployments after code changes.
 
 ## Smoke test
 

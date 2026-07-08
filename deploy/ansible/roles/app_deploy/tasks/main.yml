@@ -1,0 +1,51 @@
+---
+- name: Ensure application directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0755"
+  loop:
+    - "{{ app_dir }}"
+    - "{{ app_dir }}/server/logs"
+    - "{{ app_dir }}/client/logs"
+
+- name: Install server dependencies
+  ansible.builtin.command: pnpm install --frozen-lockfile
+  args:
+    chdir: "{{ app_dir }}/server"
+  become_user: "{{ app_user }}"
+
+- name: Install client dependencies
+  ansible.builtin.command: pnpm install --frozen-lockfile
+  args:
+    chdir: "{{ app_dir }}/client"
+  become_user: "{{ app_user }}"
+
+- name: Build server
+  ansible.builtin.command: pnpm build
+  args:
+    chdir: "{{ app_dir }}/server"
+  become_user: "{{ app_user }}"
+
+- name: Build client
+  ansible.builtin.command: pnpm build
+  args:
+    chdir: "{{ app_dir }}/client"
+  become_user: "{{ app_user }}"
+
+- name: Reload supervisor configuration
+  ansible.builtin.command: supervisorctl reread
+  changed_when: "'No config updates to processes' not in supervisor_reread.stdout"
+  register: supervisor_reread
+
+- name: Apply supervisor updates
+  ansible.builtin.command: supervisorctl update
+  register: supervisor_update
+  changed_when: "'added process group' in supervisor_update.stdout or 'changed' in supervisor_update.stdout or 'updated process group' in supervisor_update.stdout"
+
+- name: Restart mediasoup service
+  ansible.builtin.command: supervisorctl restart mediasoup-poc
+  register: supervisor_restart
+  changed_when: "'ERROR' not in supervisor_restart.stdout"
