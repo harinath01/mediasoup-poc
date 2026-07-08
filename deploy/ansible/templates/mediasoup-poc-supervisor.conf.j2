@@ -14,4 +14,4 @@ stdout_logfile_backups=5
 stderr_logfile={{ app_dir }}/server/logs/stderr.log
 stderr_logfile_maxbytes=10MB
 stderr_logfile_backups=5
-environment=NODE_ENV="production",HOST="0.0.0.0",PORT="{{ server_port }}",APP_DOMAIN="{{ app_domain }}",MEDIASOUP_LISTEN_IP="{{ mediasoup_announced_ip }}"
+environment=NODE_ENV="production",HOST="127.0.0.1",PORT="{{ server_port }}",APP_DOMAIN="{{ app_domain }}",MEDIASOUP_LISTEN_IP="{{ mediasoup_announced_ip }}"

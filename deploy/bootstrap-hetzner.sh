@@ -17,6 +17,7 @@ Options:
   --user <user>                 Application SSH user to create/use. Default: ubuntu
   --user-password <password>    Password for the application SSH user
   --domain <domain>             Public domain. Default: liveproctoring.tpsentinel.com
+  --letsencrypt-email <email>   Email for Let's Encrypt registration. Default: none
   --public-ip <ip>              mediasoup announced IP. Default: same as --host
   --app-dir <path>              Remote project path. Default: /home/<user>/mediasoup-poc
   --port <port>                 Backend port. Default: 3001
@@ -39,12 +40,38 @@ require_cmd() {
   fi
 }
 
+require_supported_ansible() {
+  local version major minor
+  version="$(ansible --version | awk 'NR==1 {print $2}')"
+  major="${version%%.*}"
+  minor="${version#*.}"
+  minor="${minor%%.*}"
+
+  if [[ -z "${major}" || -z "${minor}" ]]; then
+    echo "Could not determine Ansible version from: ${version}" >&2
+    exit 1
+  fi
+
+  if (( major < 2 || (major == 2 && minor < 16) )); then
+    cat >&2 <<EOF
+Unsupported Ansible version: ${version}
+Use Ansible 2.16 or newer. Ubuntu's distro ansible package is often too old for this workflow.
+Recommended install:
+  python3 -m pip install --user pipx
+  python3 -m pipx ensurepath
+  pipx install 'ansible-core>=2.16,<2.19'
+EOF
+    exit 1
+  fi
+}
+
 HOST=""
 ROOT_USER="root"
 ROOT_PASSWORD=""
 USER_NAME="ubuntu"
 USER_PASSWORD=""
 DOMAIN="liveproctoring.tpsentinel.com"
+LETSENCRYPT_EMAIL=""
 PUBLIC_IP=""
 APP_DIR=""
 PORT="3001"
@@ -79,6 +106,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --domain)
       DOMAIN="${2:-}"
+      shift 2
+      ;;
+    --letsencrypt-email)
+      LETSENCRYPT_EMAIL="${2:-}"
       shift 2
       ;;
     --public-ip)
@@ -130,6 +161,7 @@ require_cmd ansible-playbook
 require_cmd sshpass
 require_cmd rsync
 require_cmd ssh
+require_supported_ansible
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
@@ -187,6 +219,7 @@ ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
   --extra-vars "app_user=${USER_NAME}" \
   --extra-vars "app_dir=${APP_DIR}" \
   --extra-vars "app_domain=${DOMAIN}" \
+  --extra-vars "letsencrypt_email=${LETSENCRYPT_EMAIL}" \
   --extra-vars "mediasoup_announced_ip=${PUBLIC_IP}" \
   --extra-vars "server_port=${PORT}" \
   --extra-vars "node_major_version=${NODE_VERSION}" \

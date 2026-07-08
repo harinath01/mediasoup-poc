@@ -13,19 +13,22 @@ The deployment flow is:
 5. install server and client dependencies
 6. build the server and the client
 7. configure `supervisor`
-8. start the backend, which also serves the built frontend
+8. install `nginx` and request a Let's Encrypt certificate for the domain
+9. proxy `https://<domain>` to the backend
 
 The production process is only the Node.js backend. The frontend is served from `client/dist` by Express.
+`nginx` terminates TLS and proxies to the backend on `127.0.0.1:3001`.
 
 ## Local requirements
 
 Install these on the machine that runs the deployment.
 
-Ubuntu or Debian:
+Recommended on Ubuntu or Debian:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ansible sshpass rsync openssh-client
+sudo apt-get install -y pipx sshpass rsync openssh-client
+pipx install 'ansible-core>=2.16,<2.19'
 ```
 
 macOS with Homebrew:
@@ -41,10 +44,13 @@ Required tools:
 - `rsync`
 - `ssh`
 
+Avoid Ubuntu's older distro `ansible` package for this workflow. It can fail during module transfer and fact gathering.
+
 ## Remote assumptions
 
 - Fresh Hetzner server with working `root` SSH login
 - password authentication is enabled
+- `liveproctoring.tpsentinel.com` resolves to the Hetzner server IP before certificate issuance
 
 ## Usage
 
@@ -59,6 +65,18 @@ deploy/bootstrap-hetzner.sh \
   --domain liveproctoring.tpsentinel.com
 ```
 
+Optional with a real Let's Encrypt contact email:
+
+```bash
+deploy/bootstrap-hetzner.sh \
+  --host <server-public-ip> \
+  --root-password '<root-password>' \
+  --user ubuntu \
+  --user-password '<ubuntu-password>' \
+  --domain liveproctoring.tpsentinel.com \
+  --letsencrypt-email you@example.com
+```
+
 Optional flags:
 
 - `--public-ip` to override the mediasoup announced IP
@@ -67,10 +85,33 @@ Optional flags:
 - `--node-version` to change the Node.js major version
 - `--pnpm-version` to pin a different pnpm version
 - `--root-user` to override the initial bootstrap user, default `root`
+- `--letsencrypt-email` to register the certificate with an email address
 
 ## Notes
 
 - The deployment sets `MEDIASOUP_LISTEN_IP` from the supplied public IP instead of relying on local interface detection.
 - The bootstrap script creates `ubuntu`, grants it passwordless sudo, and then uses that account for the rest of the deployment.
 - The service is installed in supervisor as `mediasoup-poc`.
-- After deployment, the application is served from the backend port, default `3001`.
+- After deployment, open `https://liveproctoring.tpsentinel.com/` instead of hitting port `3001` directly.
+
+## Redeploy after enabling HTTPS
+
+If you already ran the bootstrap once before the HTTPS changes, just rerun the same command. The playbook is designed to update the machine in place.
+
+## Smoke test
+
+```bash
+curl -I https://liveproctoring.tpsentinel.com
+curl https://liveproctoring.tpsentinel.com/api/rooms
+```
+
+Expected result:
+
+- `200 OK` for `/`
+- JSON response for `/api/rooms`
+
+Camera and microphone checks should now be done via:
+
+- `https://liveproctoring.tpsentinel.com/`
+- `https://liveproctoring.tpsentinel.com/student`
+- `https://liveproctoring.tpsentinel.com/staff`

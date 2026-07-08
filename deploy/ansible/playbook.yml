@@ -6,6 +6,7 @@
     app_user: ubuntu
     app_dir: "/home/{{ app_user }}/mediasoup-poc"
     app_domain: liveproctoring.tpsentinel.com
+    letsencrypt_email: ""
     mediasoup_announced_ip: "{{ ansible_host }}"
     server_port: 3001
     node_major_version: 22
@@ -15,8 +16,11 @@
       - ca-certificates
       - curl
       - git
+      - nginx
       - pkg-config
       - python3
+      - certbot
+      - python3-certbot
       - rsync
       - supervisor
   tasks:
@@ -103,6 +107,101 @@
         name: supervisor
         state: started
         enabled: true
+
+    - name: Ensure ACME webroot exists
+      ansible.builtin.file:
+        path: /var/www/certbot
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Check DNS resolution for {{ app_domain }}
+      ansible.builtin.command: getent ahostsv4 {{ app_domain }}
+      register: domain_resolution
+      changed_when: false
+
+    - name: Fail if {{ app_domain }} does not resolve to the target IP
+      ansible.builtin.fail:
+        msg: >-
+          {{ app_domain }} must resolve to {{ ansible_host }} before requesting a Let's Encrypt certificate.
+          Current resolution output: {{ domain_resolution.stdout | default('no result') }}
+      when: ansible_host not in domain_resolution.stdout
+
+    - name: Check if Let's Encrypt certificate already exists
+      ansible.builtin.stat:
+        path: "/etc/letsencrypt/live/{{ app_domain }}/fullchain.pem"
+      register: letsencrypt_cert
+
+    - name: Install bootstrap nginx site
+      ansible.builtin.template:
+        src: templates/nginx-site.conf.j2
+        dest: /etc/nginx/sites-available/mediasoup-poc.conf
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        nginx_tls_enabled: false
+
+    - name: Enable nginx site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/mediasoup-poc.conf
+        dest: /etc/nginx/sites-enabled/mediasoup-poc.conf
+        state: link
+
+    - name: Disable default nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Validate nginx bootstrap config
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Ensure nginx is running
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Reload nginx bootstrap config
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+    - name: Obtain Let's Encrypt certificate
+      ansible.builtin.command: >-
+        certbot certonly --webroot -w /var/www/certbot
+        -d {{ app_domain }}
+        --agree-tos
+        --non-interactive
+        {% if letsencrypt_email | length > 0 %}
+        --email {{ letsencrypt_email }}
+        {% else %}
+        --register-unsafely-without-email
+        {% endif %}
+      when: not letsencrypt_cert.stat.exists
+      register: certbot_issue
+      changed_when: "'Congratulations' in certbot_issue.stdout or 'success' in (certbot_issue.stdout | lower)"
+
+    - name: Install final nginx TLS site
+      ansible.builtin.template:
+        src: templates/nginx-site.conf.j2
+        dest: /etc/nginx/sites-available/mediasoup-poc.conf
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        nginx_tls_enabled: true
+
+    - name: Validate final nginx config
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
 
     - name: Reload supervisor configuration
       ansible.builtin.command: supervisorctl reread
