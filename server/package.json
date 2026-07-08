@@ -7,7 +7,8 @@
     "dev": "tsx src/server.ts",
     "build": "tsc",
     "start": "bash start.sh",
-    "start:direct": "tsx src/server.ts"
+    "start:direct": "tsx src/server.ts",
+    "start:prod": "node dist/server.js"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

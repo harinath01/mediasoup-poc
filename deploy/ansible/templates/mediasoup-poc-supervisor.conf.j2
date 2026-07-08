@@ -1,0 +1,17 @@
+[program:mediasoup-poc]
+process_name=%(program_name)s
+command=/usr/bin/node {{ app_dir }}/server/dist/server.js
+directory={{ app_dir }}/server
+user={{ app_user }}
+autostart=true
+autorestart=true
+startretries=3
+stopwaitsecs=10
+stopsignal=SIGTERM
+stdout_logfile={{ app_dir }}/server/logs/stdout.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=5
+stderr_logfile={{ app_dir }}/server/logs/stderr.log
+stderr_logfile_maxbytes=10MB
+stderr_logfile_backups=5
+environment=NODE_ENV="production",HOST="0.0.0.0",PORT="{{ server_port }}",APP_DOMAIN="{{ app_domain }}",MEDIASOUP_LISTEN_IP="{{ mediasoup_announced_ip }}"
