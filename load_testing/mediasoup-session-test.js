@@ -15,6 +15,28 @@ import {
 // Example:
 // K6_BROWSER_ARGS='use-fake-device-for-media-stream,use-fake-ui-for-media-stream,use-file-for-fake-video-capture=/home/hari/workspace/mediasoup-poc/load_testing/fake_media/Johnny_1280x720_60.y4m,use-file-for-fake-audio-capture=/home/hari/workspace/mediasoup-poc/load_testing/fake_media/long-audio-5min-44100hz-16bit.wav'
 
+const ROUTES = {
+  student: '/student',
+  staff: '/staff',
+};
+
+const SELECTORS = {
+  studentName: '#student-name',
+  studentRoom: '#student-room',
+  studentJoin: '#student-join',
+  studentRoomInfo: '#student-room-info',
+  studentSelfPreview: '#student-self-preview',
+  staffName: '#staff-name',
+  staffRefreshRooms: '#staff-refresh-rooms',
+  staffRoomInfo: '#staff-room-info',
+  staffPageNext: '#staff-page-next',
+  staffPagePrev: '#staff-page-prev',
+  staffFocusModal: '#staff-focus-modal',
+  staffFocusClose: '#staff-focus-close',
+  staffTilePrefix: '[id^="staff-student-tile-"]',
+  staffFocusOpenPrefix: '[id^="staff-focus-open-"]',
+};
+
 const appConfig = readAppConfig(__ENV);
 const runtimeConfig = readRuntimeConfig(__ENV, appConfig);
 
@@ -63,7 +85,7 @@ export default async function mediasoupSessionTest() {
 }
 
 async function waitForAssignedStart(assignment) {
-  const startDelayMs = getStartDelayMs(assignment);
+  const startDelayMs = calculateStartDelayMs(assignment);
   if (startDelayMs > 0) {
     sleep(startDelayMs / 1000);
   }
@@ -135,39 +157,30 @@ async function closeBrowserSession(page, context) {
 }
 
 async function joinAsStudent(page, assignment) {
-  await page.goto(`${appConfig.baseUrl}/student`, { waitUntil: 'networkidle' });
-  await page.locator('#student-name').fill(assignment.name);
-  await page.locator('#student-room').fill(assignment.roomId);
-  await page.locator('#student-join').click();
+  await page.goto(buildPageUrl(ROUTES.student), { waitUntil: 'networkidle' });
+  await page.locator(SELECTORS.studentName).fill(assignment.name);
+  await page.locator(SELECTORS.studentRoom).fill(assignment.roomId);
+  await page.locator(SELECTORS.studentJoin).click();
 
-  await page.locator('#student-room-info').waitFor({
-    state: 'visible',
-    timeout: appConfig.studentJoinTimeoutMs,
-  });
-  await page.locator('#student-self-preview').waitFor({
-    state: 'visible',
-    timeout: appConfig.studentJoinTimeoutMs,
-  });
+  await waitForVisible(page, SELECTORS.studentRoomInfo, appConfig.studentJoinTimeoutMs);
+  await waitForVisible(page, SELECTORS.studentSelfPreview, appConfig.studentJoinTimeoutMs);
   await waitForLocatorText(
-    page.locator('#student-room-info'),
+    page.locator(SELECTORS.studentRoomInfo),
     [assignment.roomId, assignment.name],
     appConfig.studentJoinTimeoutMs
   );
 }
 
 async function joinAsStaff(page, assignment) {
-  await page.goto(`${appConfig.baseUrl}/staff`, { waitUntil: 'networkidle' });
-  await page.locator('#staff-name').fill(assignment.name);
+  await page.goto(buildPageUrl(ROUTES.staff), { waitUntil: 'networkidle' });
+  await page.locator(SELECTORS.staffName).fill(assignment.name);
 
   const roomJoinButton = await waitForJoinableRoom(page, assignment.roomId);
   await roomJoinButton.click();
 
-  await page.locator('#staff-room-info').waitFor({
-    state: 'visible',
-    timeout: appConfig.staffJoinTimeoutMs,
-  });
+  await waitForVisible(page, SELECTORS.staffRoomInfo, appConfig.staffJoinTimeoutMs);
   await waitForLocatorText(
-    page.locator('#staff-room-info'),
+    page.locator(SELECTORS.staffRoomInfo),
     [assignment.roomId, assignment.name],
     appConfig.staffJoinTimeoutMs
   );
@@ -176,10 +189,10 @@ async function joinAsStaff(page, assignment) {
 
 async function waitForJoinableRoom(page, roomId) {
   const deadline = Date.now() + appConfig.staffRoomDiscoveryTimeoutMs;
-  const roomJoinButton = page.locator(`#staff-join-room-${roomId}`);
+  const roomJoinButton = page.locator(buildStaffJoinRoomSelector(roomId));
 
   while (Date.now() < deadline) {
-    await page.locator('#staff-refresh-rooms').click();
+    await page.locator(SELECTORS.staffRefreshRooms).click();
 
     if (await roomJoinButton.isVisible().catch(() => false)) {
       return roomJoinButton;
@@ -192,7 +205,7 @@ async function waitForJoinableRoom(page, roomId) {
 }
 
 async function waitForVisibleTiles(page, timeoutMs) {
-  await waitForLocatorCountAtLeast(page.locator('[id^="staff-student-tile-"]'), 1, timeoutMs);
+  await waitForLocatorCountAtLeast(page.locator(SELECTORS.staffTilePrefix), 1, timeoutMs);
 }
 
 async function performStaffHoldAction(page) {
@@ -206,44 +219,35 @@ async function performStaffHoldAction(page) {
 }
 
 async function changeVisiblePage(page) {
-  const nextButton = page.locator('#staff-page-next');
+  const nextButton = page.locator(SELECTORS.staffPageNext);
   if (await isEnabled(nextButton)) {
-    await nextButton.click();
-    await page.waitForTimeout(500);
+    await clickAndPause(page, nextButton);
     return;
   }
 
-  const prevButton = page.locator('#staff-page-prev');
+  const prevButton = page.locator(SELECTORS.staffPagePrev);
   if (await isEnabled(prevButton)) {
-    await prevButton.click();
-    await page.waitForTimeout(500);
+    await clickAndPause(page, prevButton);
   }
 }
 
 async function openAndCloseFocusModal(page) {
-  const focusButtons = page.locator('[id^="staff-focus-open-"]');
+  const focusButtons = page.locator(SELECTORS.staffFocusOpenPrefix);
   const focusCount = await focusButtons.count();
   if (!focusCount) {
     throw new Error('no focus buttons available');
   }
 
   await focusButtons.first().click();
-  await page.locator('#staff-focus-modal').waitFor({
-    state: 'visible',
-    timeout: appConfig.focusActionTimeoutMs,
-  });
-  await page.locator('#staff-focus-close').click();
-  await page.locator('#staff-focus-modal').waitFor({
-    state: 'hidden',
-    timeout: appConfig.focusActionTimeoutMs,
-  });
+  await waitForVisible(page, SELECTORS.staffFocusModal, appConfig.focusActionTimeoutMs);
+  await page.locator(SELECTORS.staffFocusClose).click();
+  await waitForHidden(page, SELECTORS.staffFocusModal, appConfig.focusActionTimeoutMs);
 }
 
 function createAssignment(vuId) {
   const zeroBasedVu = vuId - 1;
-  const participantsPerRoom = appConfig.studentsPerRoom + appConfig.staffPerRoom;
-  const roomIndex = Math.floor(zeroBasedVu / participantsPerRoom);
-  const positionInRoom = zeroBasedVu % participantsPerRoom;
+  const roomIndex = Math.floor(zeroBasedVu / appConfig.participantsPerRoom);
+  const positionInRoom = zeroBasedVu % appConfig.participantsPerRoom;
   const roomId = `${appConfig.roomPrefix}-${roomIndex + 1}`;
 
   if (positionInRoom < appConfig.studentsPerRoom) {
@@ -254,33 +258,40 @@ function createAssignment(vuId) {
 }
 
 function createStudentAssignment(roomIndex, positionInRoom, roomId) {
-  const studentIndex = roomIndex * appConfig.studentsPerRoom + positionInRoom + 1;
-
-  return {
+  return createRoleAssignment({
     role: 'student',
     roomIndex,
-    participantIndex: positionInRoom + 1,
-    globalRoleIndex: studentIndex,
+    positionInRoom,
     roomId,
-    name: `${appConfig.studentNamePrefix}-${studentIndex}`,
-  };
+    globalRoleIndex: roomIndex * appConfig.studentsPerRoom + positionInRoom + 1,
+    namePrefix: appConfig.studentNamePrefix,
+  });
 }
 
 function createStaffAssignment(roomIndex, positionInRoom, roomId) {
   const staffIndexInRoom = positionInRoom - appConfig.studentsPerRoom;
-  const staffIndex = roomIndex * appConfig.staffPerRoom + staffIndexInRoom + 1;
-
-  return {
+  return createRoleAssignment({
     role: 'staff',
     roomIndex,
-    participantIndex: staffIndexInRoom + 1,
-    globalRoleIndex: staffIndex,
+    positionInRoom: staffIndexInRoom,
     roomId,
-    name: `${appConfig.staffNamePrefix}-${staffIndex}`,
+    globalRoleIndex: roomIndex * appConfig.staffPerRoom + staffIndexInRoom + 1,
+    namePrefix: appConfig.staffNamePrefix,
+  });
+}
+
+function createRoleAssignment({ role, roomIndex, positionInRoom, roomId, globalRoleIndex, namePrefix }) {
+  return {
+    role,
+    roomIndex,
+    participantIndex: positionInRoom + 1,
+    globalRoleIndex,
+    roomId,
+    name: `${namePrefix}-${globalRoleIndex}`,
   };
 }
 
-function getStartDelayMs(assignment) {
+function calculateStartDelayMs(assignment) {
   if (assignment.role === 'student') {
     return getStudentStartDelayMs(assignment.globalRoleIndex);
   }
@@ -303,6 +314,7 @@ function readAppConfig(env) {
   const staffPerRoom = readPositiveInt(env, 'STAFF_PER_ROOM', 1);
   const totalStudents = roomCount * studentsPerRoom;
   const totalParticipants = roomCount * (studentsPerRoom + staffPerRoom);
+  const participantsPerRoom = studentsPerRoom + staffPerRoom;
 
   return {
     baseUrl: readBaseUrl(env),
@@ -310,6 +322,7 @@ function readAppConfig(env) {
     roomCount,
     studentsPerRoom,
     staffPerRoom,
+    participantsPerRoom,
     totalStudents,
     totalParticipants,
     sessionDurationMs: readDurationMs(env, 'SESSION_DURATION', '5m'),
@@ -328,12 +341,7 @@ function readAppConfig(env) {
 }
 
 function readRuntimeConfig(env, currentAppConfig) {
-  const maxDurationMs =
-    currentAppConfig.rampUpMs +
-    currentAppConfig.staffStartBufferMs +
-    (currentAppConfig.roomCount > 0 ? (currentAppConfig.roomCount - 1) * currentAppConfig.perRoomStaffOffsetMs : 0) +
-    currentAppConfig.sessionDurationMs +
-    readDurationMs(env, 'TEST_PADDING', '45s');
+  const maxDurationMs = calculateMaxDurationMs(env, currentAppConfig);
 
   return {
     executor: 'per-vu-iterations',
@@ -358,6 +366,37 @@ function buildThresholds() {
     browser_web_vital_inp: ['p(95)<500'],
     browser_web_vital_lcp: ['p(95)<4000'],
   };
+}
+
+function calculateMaxDurationMs(env, currentAppConfig) {
+  return (
+    currentAppConfig.rampUpMs +
+    currentAppConfig.staffStartBufferMs +
+    Math.max(0, currentAppConfig.roomCount - 1) * currentAppConfig.perRoomStaffOffsetMs +
+    currentAppConfig.sessionDurationMs +
+    readDurationMs(env, 'TEST_PADDING', '45s')
+  );
+}
+
+function buildPageUrl(route) {
+  return `${appConfig.baseUrl}${route}`;
+}
+
+function buildStaffJoinRoomSelector(roomId) {
+  return `#staff-join-room-${roomId}`;
+}
+
+async function waitForVisible(page, selector, timeoutMs) {
+  await page.locator(selector).waitFor({ state: 'visible', timeout: timeoutMs });
+}
+
+async function waitForHidden(page, selector, timeoutMs) {
+  await page.locator(selector).waitFor({ state: 'hidden', timeout: timeoutMs });
+}
+
+async function clickAndPause(page, locator, delayMs = 500) {
+  await locator.click();
+  await page.waitForTimeout(delayMs);
 }
 
 function readBaseUrl(env) {
