@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as mediasoup from 'mediasoup';
+import { getMetricsSnapshot } from './metrics.js';
 import { setWorker } from './worker.js';
 import studentRoutes from './routes/students.js';
 import staffRoutes from './routes/staff.js';
@@ -39,6 +40,11 @@ app.get('/api/rooms', (_req, res) => {
     staff: r.staff.length,
   }));
   res.json(summary);
+});
+
+app.get('/api/metrics', async (_req, res) => {
+  const snapshot = await getMetricsSnapshot();
+  res.json(snapshot);
 });
 
 app.get(/^(?!\/api\/|\/socket\.io).*/, (_req, res) => {

@@ -24,6 +24,10 @@ function StaffPage() {
   const [totalStudents, setTotalStudents] = useState(0);
   const [chatDraft, setChatDraft] = useState('');
   const [chatRecipient, setChatRecipient] = useState('all');
+  const [metricsModalOpen, setMetricsModalOpen] = useState(false);
+  const [metrics, setMetrics] = useState(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState('');
   const recvTransportRef = useRef(null);
   const deviceRef = useRef(null);
   const streamMapRef = useRef(new Map());
@@ -83,6 +87,42 @@ function StaffPage() {
     if (!joined || !recvTransportRef.current) return;
     void syncRoomProducers(mediaProducers);
   }, [joined, mediaProducers]);
+
+  useEffect(() => {
+    if (!joined || !metricsModalOpen) return;
+
+    let cancelled = false;
+
+    async function loadMetrics(silent = false) {
+      if (!silent) {
+        setMetricsLoading(true);
+      }
+
+      try {
+        const result = await apiCall('GET', '/api/metrics');
+        if (cancelled) return;
+        setMetrics(result);
+        setMetricsError('');
+      } catch (err) {
+        if (cancelled) return;
+        setMetricsError(err.message || 'Failed to load metrics.');
+      } finally {
+        if (!cancelled && !silent) {
+          setMetricsLoading(false);
+        }
+      }
+    }
+
+    void loadMetrics(false);
+    const interval = window.setInterval(() => {
+      void loadMetrics(true);
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [joined, metricsModalOpen]);
 
   useEffect(() => {
     function handlePageHide() {
@@ -896,6 +936,9 @@ function StaffPage() {
       setStatus({ state: 'idle', text: 'Refresh rooms to begin.' });
       setChatDraft('');
       setChatRecipient('all');
+      setMetricsModalOpen(false);
+      setMetrics(null);
+      setMetricsError('');
     }
   }
 
@@ -1048,6 +1091,11 @@ function StaffPage() {
           onPageChange={handlePageChange}
           studentsPerPage={STUDENTS_PER_PAGE}
           totalStudents={totalStudents}
+          metrics={metrics}
+          metricsError={metricsError}
+          metricsLoading={metricsLoading}
+          metricsModalOpen={metricsModalOpen}
+          setMetricsModalOpen={setMetricsModalOpen}
         />
       )}
     </AppShell>

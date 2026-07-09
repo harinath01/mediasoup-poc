@@ -39,6 +39,11 @@ function StaffDashboard({
   studentsPerPage,
   totalStudents,
   timeRemaining,
+  metrics,
+  metricsError,
+  metricsLoading,
+  metricsModalOpen,
+  setMetricsModalOpen,
 }) {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -50,7 +55,13 @@ function StaffDashboard({
   return (
     <div className={`grid h-full gap-0 ${sidebarOpen ? 'xl:grid-cols-[minmax(0,1fr)_390px]' : 'grid-cols-1'}`}>
       <section className={`flex min-h-0 flex-col overflow-hidden border border-white/[0.05] bg-[#101016]/95 ${sidebarOpen ? 'rounded-l-xl' : 'rounded-xl'}`}>
-        <DashboardHeader roomInfo={roomInfo} leaveRoom={leaveRoom} timeRemaining={timeRemaining} />
+        <DashboardHeader
+          roomInfo={roomInfo}
+          leaveRoom={leaveRoom}
+          timeRemaining={timeRemaining}
+          metricsModalOpen={metricsModalOpen}
+          setMetricsModalOpen={setMetricsModalOpen}
+        />
         <DashboardToolbar
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
@@ -99,11 +110,20 @@ function StaffDashboard({
           toggleRemoteAudio={toggleRemoteAudio}
         />
       ) : null}
+
+      {metricsModalOpen ? (
+        <MetricsModal
+          close={() => setMetricsModalOpen(false)}
+          metrics={metrics}
+          metricsError={metricsError}
+          metricsLoading={metricsLoading}
+        />
+      ) : null}
     </div>
   );
 }
 
-function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
+function DashboardHeader({ roomInfo, leaveRoom, timeRemaining, metricsModalOpen, setMetricsModalOpen }) {
   return (
     <div className="flex flex-col gap-5 border-b border-white/[0.05] px-6 py-5 xl:flex-row xl:items-center xl:justify-between">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
@@ -128,6 +148,13 @@ function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
           <div className="mt-1 font-mono text-[2rem] font-bold tracking-[0.08em] text-white">{timeRemaining}</div>
         </div>
         <button
+          className={`rounded-xl px-5 py-3 text-sm font-bold transition ${metricsModalOpen ? 'bg-primary text-white shadow-action' : 'border border-white/10 bg-white/[0.04] text-white/78 hover:bg-white/[0.08] hover:text-white'}`}
+          onClick={() => setMetricsModalOpen(current => !current)}
+          type="button"
+        >
+          Metrics
+        </button>
+        <button
           className="rounded-xl bg-[#ff6d70] px-6 py-3 text-base font-bold text-white shadow-[0_10px_24px_rgba(255,109,112,0.18)] transition hover:bg-[#ff7f81]"
           onClick={leaveRoom}
           type="button"
@@ -137,6 +164,153 @@ function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
       </div>
     </div>
   );
+}
+
+function MetricsModal({ close, metrics, metricsError, metricsLoading }) {
+  const worker = metrics?.status?.worker || null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm" onClick={close} role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0d0f15] shadow-[0_24px_120px_rgba(0,0,0,0.55)]" onClick={event => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-5">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.18em] text-white/35">System Metrics</div>
+            <div className="mt-1 text-xl font-bold tracking-[-0.03em] text-white">Live mediasoup load snapshot</div>
+            <div className="mt-1 text-sm text-white/45">
+              {metrics?.updatedAt ? `Updated ${new Date(metrics.updatedAt).toLocaleTimeString()}` : 'Waiting for first sample'}
+            </div>
+          </div>
+          <button
+            aria-label="Close metrics"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+            onClick={close}
+            type="button"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(90vh-88px)] overflow-auto p-6">
+          {metricsLoading && !metrics ? <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-4 text-white/60">Loading metrics...</div> : null}
+          {metricsError ? <div className="mb-6 rounded-2xl border border-danger/20 bg-danger/10 px-4 py-4 text-[#f3b4c1]">{metricsError}</div> : null}
+
+          {metrics ? (
+            <div className="space-y-6">
+              <MetricsSection
+                title="Status"
+                items={[
+                  { label: 'Worker health', value: metrics.status.workerHealth },
+                  { label: 'Worker CPU', value: formatPercent(worker?.cpuPercent) },
+                  { label: 'Worker RSS', value: formatBytes(worker?.rssBytes) },
+                  { label: 'Worker count', value: metrics.status.workerCount },
+                  { label: 'Worker died count', value: metrics.status.workerDiedCount },
+                ]}
+              />
+
+              <MetricsSection
+                title="Topology Cardinality"
+                items={[
+                  { label: 'Active rooms', value: metrics.topology.activeRooms },
+                  { label: 'Active WebRTC transports', value: metrics.topology.activeWebRtcTransports },
+                  { label: 'Active producers', value: metrics.topology.activeProducers },
+                  { label: 'Active consumers', value: metrics.topology.activeConsumers },
+                ]}
+              />
+
+              <MetricsSection
+                title="Transport Bandwidth"
+                items={[
+                  { label: 'Total recv bitrate', value: formatBitrate(metrics.bandwidth.totalRecvBitrate) },
+                  { label: 'Total send bitrate', value: formatBitrate(metrics.bandwidth.totalSendBitrate) },
+                  { label: 'RTP recv bitrate', value: formatBitrate(metrics.bandwidth.totalRtpRecvBitrate) },
+                  { label: 'RTP send bitrate', value: formatBitrate(metrics.bandwidth.totalRtpSendBitrate) },
+                  { label: 'Available outgoing bitrate', value: formatBitrate(metrics.bandwidth.totalAvailableOutgoingBitrate) },
+                ]}
+              />
+
+              <MetricsSection
+                title="RTP Quality Signals"
+                items={[
+                  { label: 'Producer score', value: formatSummary(metrics.rtpQuality.producerScore) },
+                  { label: 'Consumer score', value: formatSummary(metrics.rtpQuality.consumerScore) },
+                  { label: 'RTT', value: formatLatencySummary(metrics.rtpQuality.rttMs) },
+                  { label: 'Packet loss', value: formatPacketLoss(metrics.rtpQuality.packetLoss) },
+                  { label: 'Jitter', value: formatLatencySummary(metrics.rtpQuality.jitter) },
+                  { label: 'NACK count', value: formatCount(metrics.rtpQuality.controlSignals.nackCount) },
+                  { label: 'PLI count', value: formatCount(metrics.rtpQuality.controlSignals.pliCount) },
+                  { label: 'FIR count', value: formatCount(metrics.rtpQuality.controlSignals.firCount) },
+                ]}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricsSection({ title, items }) {
+  return (
+    <section>
+      <div className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-white/35">{title}</div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {items.map(item => (
+          <article key={item.label} className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/35">{item.label}</div>
+            <div className="mt-3 text-lg font-semibold tracking-[-0.02em] text-white">{item.value}</div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatCount(value) {
+  return Number.isFinite(value) ? Number(value).toLocaleString() : 'n/a';
+}
+
+function formatPercent(value) {
+  return Number.isFinite(value) ? `${Number(value).toFixed(2)}%` : 'sampling...';
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value <= 0) return 'n/a';
+  const mb = Number(value) / (1024 * 1024);
+  return `${mb.toFixed(2)} MB`;
+}
+
+function formatBitrate(value) {
+  if (!Number.isFinite(value) || value < 0) return 'n/a';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} Mbps`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(2)} Kbps`;
+  return `${Number(value).toFixed(0)} bps`;
+}
+
+function formatSummary(summary) {
+  if (!summary?.count) return 'n/a';
+  return `avg ${summary.avg} • min ${summary.min} • max ${summary.max}`;
+}
+
+function formatLatencySummary(summary) {
+  if (!summary?.count) return 'n/a';
+  return `avg ${summary.avg} ms • max ${summary.max} ms`;
+}
+
+function formatPacketLoss(packetLoss) {
+  if (!packetLoss) return 'n/a';
+
+  const lossParts = [];
+
+  if (Number.isFinite(packetLoss.packetsLost)) {
+    lossParts.push(`${Number(packetLoss.packetsLost).toLocaleString()} packets`);
+  }
+
+  if (packetLoss.fractionLost?.count) {
+    lossParts.push(`fraction avg ${packetLoss.fractionLost.avg}`);
+    lossParts.push(`max ${packetLoss.fractionLost.max}`);
+  }
+
+  return lossParts.length ? lossParts.join(' • ') : 'n/a';
 }
 
 function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen, currentPage, totalPages, onPageChange, studentsPerPage, totalStudents }) {
