@@ -296,7 +296,7 @@ function calculateStartDelayMs(assignment) {
     return getStudentStartDelayMs(assignment.globalRoleIndex);
   }
 
-  return appConfig.rampUpMs + appConfig.staffStartBufferMs + assignment.roomIndex * appConfig.perRoomStaffOffsetMs;
+  return getStaffStartDelayMs(assignment.roomIndex);
 }
 
 function getStudentStartDelayMs(globalRoleIndex) {
@@ -306,6 +306,13 @@ function getStudentStartDelayMs(globalRoleIndex) {
 
   const spreadIndex = globalRoleIndex - 1;
   return Math.floor((appConfig.rampUpMs * spreadIndex) / Math.max(1, appConfig.totalStudents - 1));
+}
+
+function getStaffStartDelayMs(roomIndex) {
+  const firstStudentGlobalIndexForRoom = roomIndex * appConfig.studentsPerRoom + 1;
+  const firstStudentDelayMs = getStudentStartDelayMs(firstStudentGlobalIndexForRoom);
+
+  return firstStudentDelayMs + appConfig.staffStartBufferMs + roomIndex * appConfig.perRoomStaffOffsetMs;
 }
 
 function readAppConfig(env) {
