@@ -16,10 +16,10 @@ function StaffJoinPanel({ name, setName, refreshing, refreshRooms, error, rooms,
       <div className="grid gap-[13px]">
         <label className="grid gap-2">
           <span className="text-[0.84rem] text-muted">Name</span>
-          <input className={inputClass} value={name} onChange={event => setName(event.target.value)} placeholder="Your name" />
+          <input id="staff-name" className={inputClass} value={name} onChange={event => setName(event.target.value)} placeholder="Your name" />
         </label>
 
-        <button className={secondaryButtonClass} onClick={refreshRooms} type="button">
+        <button id="staff-refresh-rooms" className={secondaryButtonClass} onClick={refreshRooms} type="button">
           {refreshing ? 'Refreshing...' : 'Refresh Rooms'}
         </button>
 
@@ -29,6 +29,7 @@ function StaffJoinPanel({ name, setName, refreshing, refreshRooms, error, rooms,
           {rooms.length ? (
             rooms.map(room => (
               <div
+                id={`staff-room-card-${room.id}`}
                 className="flex flex-col gap-4 rounded border border-white/[0.05] bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"
                 key={room.id}
               >
@@ -40,6 +41,7 @@ function StaffJoinPanel({ name, setName, refreshing, refreshRooms, error, rooms,
                   </div>
                 </div>
                 <button
+                  id={`staff-join-room-${room.id}`}
                   className="rounded bg-primary px-4 py-3 font-bold text-white transition hover:bg-primary-strong sm:w-auto"
                   onClick={() => joinRoom(room.id)}
                   type="button"

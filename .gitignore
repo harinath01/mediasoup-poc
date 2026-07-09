@@ -8,3 +8,4 @@ build/
 .env
 *.log
 .DS_Store
+load_testing/fake_media/

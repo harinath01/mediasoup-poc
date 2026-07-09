@@ -117,7 +117,7 @@ function DashboardHeader({ roomInfo, leaveRoom, timeRemaining }) {
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-white/35">Session Room</div>
           <div className="mt-1 text-[1.05rem] font-semibold tracking-[-0.02em] text-white/90">
-            {roomInfo.replace('Room: ', '').replace(' | Staff: ', ' • ')}
+            <span id="staff-room-info">{roomInfo.replace('Room: ', '').replace(' | Staff: ', ' • ')}</span>
           </div>
         </div>
       </div>
@@ -165,6 +165,7 @@ function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen, currentPa
         </div>
         <div className="inline-flex items-center gap-2 rounded-xl bg-white/[0.06] p-1">
           <button
+            id="staff-page-prev"
             className="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:text-white/25"
             disabled={currentPage <= 0}
             onClick={() => onPageChange(currentPage - 1)}
@@ -173,6 +174,7 @@ function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen, currentPa
             Prev
           </button>
           <button
+            id="staff-page-next"
             className="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:text-white/25"
             disabled={currentPage >= totalPages - 1}
             onClick={() => onPageChange(currentPage + 1)}
@@ -196,7 +198,7 @@ function DashboardToolbar({ studentCount, sidebarOpen, setSidebarOpen, currentPa
 
 function FocusModal({ tile, close, toggleRemoteAudio, switchTileSource }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm" onClick={close} role="dialog" aria-modal="true">
+    <div id="staff-focus-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm" onClick={close} role="dialog" aria-modal="true">
       <div className="w-full max-w-6xl overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0d0f15] shadow-[0_24px_120px_rgba(0,0,0,0.55)]" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-white/[0.05] px-6 py-5">
           <div>
@@ -204,6 +206,7 @@ function FocusModal({ tile, close, toggleRemoteAudio, switchTileSource }) {
             <div className="mt-1 text-xl font-bold tracking-[-0.03em] text-white">{tile.studentName}</div>
           </div>
           <button
+            id="staff-focus-close"
             aria-label="Close focus view"
             className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/[0.08] hover:text-white"
             onClick={close}
@@ -253,6 +256,7 @@ function GridView({ tiles, tileVideoRefs, switchTileSource, openFocusView, focus
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
       {tiles.map(tile => (
         <article
+          id={`staff-student-tile-${tile.studentName}`}
           className={`group relative overflow-hidden rounded-2xl border bg-transparent transition ${focusedStudentName === tile.studentName ? 'border-primary shadow-[0_0_0_2px_rgba(104,103,240,0.35)]' : 'border-white/[0.05] hover:border-white/15'}`}
           key={tile.studentName}
         >
@@ -272,6 +276,7 @@ function GridView({ tiles, tileVideoRefs, switchTileSource, openFocusView, focus
             }}
           />
           <button
+            id={`staff-focus-open-${tile.studentName}`}
             aria-label={`Open focus view for ${tile.studentName}`}
             className="absolute inset-0 z-10"
             onClick={() => openFocusView(tile.studentName)}

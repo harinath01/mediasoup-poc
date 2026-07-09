@@ -372,14 +372,14 @@ function StudentPage() {
           <form className="grid gap-[13px]" onSubmit={onJoin}>
             <label className="grid gap-2">
               <span className="text-[0.84rem] text-muted">Name</span>
-              <input className={inputClass} value={name} onChange={event => setName(event.target.value)} placeholder="Your name" />
+              <input id="student-name" className={inputClass} value={name} onChange={event => setName(event.target.value)} placeholder="Your name" />
             </label>
             <label className="grid gap-2">
               <span className="text-[0.84rem] text-muted">Room ID</span>
-              <input className={inputClass} value={roomId} onChange={event => setRoomId(event.target.value)} placeholder="Room ID" />
+              <input id="student-room" className={inputClass} value={roomId} onChange={event => setRoomId(event.target.value)} placeholder="Room ID" />
             </label>
             {error ? <div className="rounded border border-danger/20 bg-danger/10 px-3.5 py-3 text-[#f3b4c1]">{error}</div> : null}
-            <button className="rounded bg-primary px-4 py-3.5 font-bold text-white transition hover:bg-primary-strong" type="submit">
+            <button id="student-join" className="rounded bg-primary px-4 py-3.5 font-bold text-white transition hover:bg-primary-strong" type="submit">
               Join as Student
             </button>
           </form>
@@ -409,11 +409,11 @@ function StudentPage() {
               </span>
             </div>
 
-            <p className="mt-5 text-center text-[0.95rem] text-muted">
+            <p id="student-room-info" className="mt-5 text-center text-[0.95rem] text-muted">
               {roomInfo.replace(' | ', ' · ')}
             </p>
 
-            <div className="relative mt-7 aspect-square w-full overflow-hidden rounded-lg border border-emerald-500/20 bg-black">
+            <div id="student-self-preview" className="relative mt-7 aspect-square w-full overflow-hidden rounded-lg border border-emerald-500/20 bg-black">
               <video
                 className={`h-full w-full object-cover ${camEnabled ? '-scale-x-100 opacity-90' : 'grayscale blur-[3px] opacity-40'} transition`}
                 ref={localVideoRef}
