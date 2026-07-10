@@ -1,0 +1,23 @@
+session_name: mediasoup-poc
+start_directory: /home/hari/workspace/mediasoup-poc
+windows:
+  - window_name: server
+    start_directory: /home/hari/workspace/mediasoup-poc/server
+    panes:
+      - shell_command:
+          - pnpm start
+  - window_name: client
+    start_directory: /home/hari/workspace/mediasoup-poc/client
+    panes:
+      - shell_command:
+          - pnpm dev
+  - window_name: nvim
+    start_directory: /home/hari/workspace/mediasoup-poc
+    panes:
+      - shell_command:
+          - nvim .
+  - window_name: shell
+    start_directory: /home/hari/workspace/mediasoup-poc
+    panes:
+      - shell_command:
+          - clear
