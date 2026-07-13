@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as mediasoup from 'mediasoup';
-import { getMetricsSnapshot } from './metrics.js';
+import { getMetricsSnapshot, getPrometheusMetrics } from './metrics.js';
 import { setWorker } from './worker.js';
 import studentRoutes from './routes/students.js';
 import staffRoutes from './routes/staff.js';
@@ -45,6 +45,11 @@ app.get('/api/rooms', (_req, res) => {
 app.get('/api/metrics', async (_req, res) => {
   const snapshot = await getMetricsSnapshot();
   res.json(snapshot);
+});
+
+app.get('/metrics', async (_req, res) => {
+  const metrics = await getPrometheusMetrics();
+  res.type('text/plain; version=0.0.4; charset=utf-8').send(metrics);
 });
 
 app.get(/^(?!\/api\/|\/socket\.io).*/, (_req, res) => {

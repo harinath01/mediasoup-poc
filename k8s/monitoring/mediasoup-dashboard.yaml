@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mediasoup-overview-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  mediasoup-overview.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "panels": [
+        {"type":"stat","title":"Worker health","targets":[{"expr":"mediasoup_worker_healthy"}],"gridPos":{"h":7,"w":6,"x":0,"y":0}},
+        {"type":"stat","title":"Active rooms","targets":[{"expr":"mediasoup_active_rooms"}],"gridPos":{"h":7,"w":6,"x":6,"y":0}},
+        {"type":"stat","title":"WebRTC transports","targets":[{"expr":"mediasoup_active_webrtc_transports"}],"gridPos":{"h":7,"w":6,"x":12,"y":0}},
+        {"type":"stat","title":"Media producers","targets":[{"expr":"mediasoup_active_producers"}],"gridPos":{"h":7,"w":6,"x":18,"y":0}},
+        {"type":"timeseries","title":"RTP bitrate","targets":[{"expr":"mediasoup_rtp_send_bitrate_bps","legendFormat":"send"},{"expr":"mediasoup_rtp_recv_bitrate_bps","legendFormat":"receive"}],"gridPos":{"h":8,"w":12,"x":0,"y":7}},
+        {"type":"timeseries","title":"Worker CPU and memory","targets":[{"expr":"mediasoup_worker_cpu_percent","legendFormat":"CPU %"},{"expr":"mediasoup_worker_rss_bytes","legendFormat":"RSS bytes"}],"gridPos":{"h":8,"w":12,"x":12,"y":7}},
+        {"type":"timeseries","title":"RTP quality","targets":[{"expr":"mediasoup_rtt_milliseconds","legendFormat":"RTT ms"},{"expr":"mediasoup_jitter","legendFormat":"jitter"},{"expr":"mediasoup_packets_lost","legendFormat":"packets lost"}],"gridPos":{"h":8,"w":12,"x":0,"y":15}},
+        {"type":"timeseries","title":"Control signals","targets":[{"expr":"mediasoup_nack_total","legendFormat":"NACK"},{"expr":"mediasoup_pli_total","legendFormat":"PLI"},{"expr":"mediasoup_fir_total","legendFormat":"FIR"}],"gridPos":{"h":8,"w":12,"x":12,"y":15}}
+      ],
+      "schemaVersion": 39,
+      "title": "Mediasoup Overview",
+      "uid": "mediasoup-overview",
+      "version": 1
+    }

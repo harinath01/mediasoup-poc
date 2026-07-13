@@ -1,0 +1,35 @@
+# Values for prometheus-community/kube-prometheus-stack.
+# Grafana is intentionally kept behind a Kubernetes Service; expose it only
+# after choosing DNS/TLS and credentials for the real cluster.
+grafana:
+  adminPassword: welcome 
+  persistence:
+    enabled: true
+    size: 5Gi
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+  additionalServiceMonitors:
+    - name: mediasoup-poc
+      namespaceSelector:
+        matchNames:
+          - liveproctoring
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: mediasoup-poc
+      endpoints:
+        - port: http
+          path: /metrics
+          interval: 15s

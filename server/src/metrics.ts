@@ -130,3 +130,44 @@ export async function getMetricsSnapshot() {
     },
   };
 }
+
+function appendGauge(lines: string[], name: string, help: string, value: number | null | undefined) {
+  if (!Number.isFinite(value)) return;
+  lines.push(`# HELP ${name} ${help}`);
+  lines.push(`# TYPE ${name} gauge`);
+  lines.push(`${name} ${value}`);
+}
+
+/**
+ * Prometheus text exposition for the in-process mediasoup metrics.
+ * Keep /api/metrics as JSON for the existing dashboard and consumers.
+ */
+export async function getPrometheusMetrics() {
+  const snapshot = await getMetricsSnapshot();
+  const lines: string[] = [];
+  const { status, topology, bandwidth, rtpQuality } = snapshot;
+
+  appendGauge(lines, 'mediasoup_worker_healthy', 'Whether the mediasoup worker is healthy (1) or not (0)', status.workerHealth === 'healthy' ? 1 : 0);
+  appendGauge(lines, 'mediasoup_workers', 'Number of mediasoup workers', status.workerCount);
+  appendGauge(lines, 'mediasoup_worker_died_total', 'Number of mediasoup worker deaths', status.workerDiedCount);
+  appendGauge(lines, 'mediasoup_worker_cpu_percent', 'Mediasoup worker CPU usage percentage', status.worker?.cpuPercent);
+  appendGauge(lines, 'mediasoup_worker_rss_bytes', 'Mediasoup worker resident memory in bytes', status.worker?.rssBytes);
+
+  appendGauge(lines, 'mediasoup_active_rooms', 'Active rooms', topology.activeRooms);
+  appendGauge(lines, 'mediasoup_active_webrtc_transports', 'Active WebRTC transports', topology.activeWebRtcTransports);
+  appendGauge(lines, 'mediasoup_active_producers', 'Active media producers', topology.activeProducers);
+  appendGauge(lines, 'mediasoup_active_consumers', 'Active media consumers', topology.activeConsumers);
+
+  appendGauge(lines, 'mediasoup_transport_recv_bitrate_bps', 'Aggregate transport receive bitrate in bits per second', bandwidth.totalRecvBitrate);
+  appendGauge(lines, 'mediasoup_transport_send_bitrate_bps', 'Aggregate transport send bitrate in bits per second', bandwidth.totalSendBitrate);
+  appendGauge(lines, 'mediasoup_rtp_recv_bitrate_bps', 'Aggregate RTP receive bitrate in bits per second', bandwidth.totalRtpRecvBitrate);
+  appendGauge(lines, 'mediasoup_rtp_send_bitrate_bps', 'Aggregate RTP send bitrate in bits per second', bandwidth.totalRtpSendBitrate);
+  appendGauge(lines, 'mediasoup_rtt_milliseconds', 'Average RTP round trip time in milliseconds', rtpQuality.rttMs.avg);
+  appendGauge(lines, 'mediasoup_jitter', 'Average RTP jitter', rtpQuality.jitter.avg);
+  appendGauge(lines, 'mediasoup_packets_lost', 'Aggregate RTP packets lost', rtpQuality.packetLoss.packetsLost);
+  appendGauge(lines, 'mediasoup_nack_total', 'Aggregate NACK count', rtpQuality.controlSignals.nackCount);
+  appendGauge(lines, 'mediasoup_pli_total', 'Aggregate PLI count', rtpQuality.controlSignals.pliCount);
+  appendGauge(lines, 'mediasoup_fir_total', 'Aggregate FIR count', rtpQuality.controlSignals.firCount);
+
+  return `${lines.join('\n')}\n`;
+}
