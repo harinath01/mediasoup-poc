@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mediasoup-poc
+spec:
+  replicas: 1
+  # A rolling update would temporarily create two Pods. With host networking,
+  # both would need the same node port, so replace the old Pod before new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mediasoup-poc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mediasoup-poc
+    spec:
+      # WebRTC clients connect directly to mediasoup's UDP transport ports.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: app
+          image: mediasoup-poc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: mediasoup-poc-config
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/metrics
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/metrics
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi

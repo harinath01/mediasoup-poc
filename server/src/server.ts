@@ -52,7 +52,9 @@ app.get(/^(?!\/api\/|\/socket\.io).*/, (_req, res) => {
 });
 
 async function main() {
-  const worker = await mediasoup.createWorker();
+  const rtcMinPort = Number(process.env.MEDIASOUP_RTC_MIN_PORT || 40000);
+  const rtcMaxPort = Number(process.env.MEDIASOUP_RTC_MAX_PORT || 40100);
+  const worker = await mediasoup.createWorker({ rtcMinPort, rtcMaxPort });
   setWorker(worker);
   registerChatHandlers(io);
   console.log(`mediasoup worker started, pid=${worker.pid}`);

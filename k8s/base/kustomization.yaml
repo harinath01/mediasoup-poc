@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: liveproctoring
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+images:
+  - name: mediasoup-poc
+    newName: mediasoup-poc
+    newTag: latest
+
+configMapGenerator:
+  - name: mediasoup-poc-config
+    literals:
+      # Set this to the public IP of the k3s node before applying.
+      - MEDIASOUP_LISTEN_IP=192.168.1.15
+      - MEDIASOUP_RTC_MIN_PORT=40000
+      - MEDIASOUP_RTC_MAX_PORT=40100
+
+generatorOptions:
+  disableNameSuffixHash: true
