@@ -6,9 +6,11 @@ entire current application.
 
 ## Before applying
 
-1. In `base/kustomization.yaml`, replace `CHANGE_ME` with the k3s node's public IP.
-2. Create an A record for `liveproctoring.tpsentinel.com` pointing to that IP.
-3. Point DNS at the k3s node and allow TCP 80/443 and UDP `40000-40100` through node and cloud firewalls.
+1. Create an A record for `liveproctoring.tpsentinel.com` pointing to the k3s node's public IP.
+2. Allow TCP 80/443 and UDP `40000-40999` through node and cloud firewalls.
+3. When the server was created with this repository's Terraform configuration,
+   use `deploy/apply-k3s.sh`. It reads Terraform's public IP output and sets
+   `MEDIASOUP_LISTEN_IP` automatically.
 
 Enable TLS in the ingress before using camera/microphone outside localhost; browsers require a secure context. The UDP range is bounded by `MEDIASOUP_RTC_MIN_PORT` and `MEDIASOUP_RTC_MAX_PORT`.
 
@@ -20,6 +22,19 @@ docker save mediasoup-poc:latest | sudo k3s ctr images import -
 kubectl apply -k k8s/base
 kubectl -n liveproctoring rollout status deployment/mediasoup-poc
 ```
+
+## Terraform-created server deployment
+
+After configuring `KUBECONFIG` for the new k3s server, deploy with:
+
+```bash
+deploy/apply-k3s.sh
+```
+
+The script reads `terraform output -raw mediasoup_public_ipv4`, updates the
+application ConfigMap, builds the local image, imports it into the single k3s
+server, and restarts the Pod. This ensures mediasoup announces the same public
+address that Terraform created and GoDaddy points to.
 
 For multiple nodes, push the image to a registry each node can reach, then set `newName` and `newTag` in `base/kustomization.yaml`.
 

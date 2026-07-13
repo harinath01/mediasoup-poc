@@ -9,3 +9,11 @@ build/
 *.log
 .DS_Store
 load_testing/fake_media/
+
+# Terraform local state and provider downloads can contain infrastructure IDs
+# and must not be committed.
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+!terraform/terraform.tfvars.example

@@ -17,10 +17,11 @@ images:
 configMapGenerator:
   - name: mediasoup-poc-config
     literals:
-      # Set this to the public IP of the k3s node before applying.
-      - MEDIASOUP_LISTEN_IP=192.168.1.15
+      # deploy/apply-k3s.sh replaces this with Terraform's public IPv4 before
+      # restarting the Pod. Do not use the base directly for a real deployment.
+      - MEDIASOUP_LISTEN_IP=CHANGE_ME
       - MEDIASOUP_RTC_MIN_PORT=40000
-      - MEDIASOUP_RTC_MAX_PORT=40100
+      - MEDIASOUP_RTC_MAX_PORT=41999
 
 generatorOptions:
   disableNameSuffixHash: true

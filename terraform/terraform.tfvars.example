@@ -1,0 +1,6 @@
+# Do not commit terraform.tfvars. Copy this file and set the path for your key.
+ssh_public_key_path = "~/.ssh/liveproctoring_poc.pub"
+
+# Choose the Hetzner region and capacity for this persistent server.
+location    = "fsn1"
+server_type = "cpx32"
