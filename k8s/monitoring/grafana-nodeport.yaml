@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-public
+  namespace: monitoring
+spec:
+  # Deliberately exposes Grafana on every k3s node at TCP 30300.
+  # Use a DNS name and TLS before exposing this beyond the POC.
+  type: NodePort
+  selector:
+    app.kubernetes.io/instance: kube-prometheus-stack
+    app.kubernetes.io/name: grafana
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      nodePort: 30300

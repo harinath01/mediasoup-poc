@@ -72,6 +72,18 @@ verify it against the Hetzner console before answering `yes`.
 
 ## Create the mediasoup server
 
+For the guided first-time setup, return to the repository root and run:
+
+```bash
+./deploy/setup-poc.sh
+```
+
+It prompts for the Hetzner server type, location, SSH key, and Grafana
+password; creates the server; deploys the app and monitoring; waits for your
+GoDaddy DNS update; and then configures HTTPS.
+
+To run the infrastructure step by step instead:
+
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
@@ -90,10 +102,9 @@ terraform output -raw mediasoup_public_ipv4
 Then:
 
 1. Point the GoDaddy A record for `liveproctoring.tpsentinel.com` at that IP.
-2. Wait for k3s to finish installing. For secure workstation access, create an
-   SSH tunnel with `ssh -L 6443:127.0.0.1:6443 root@<output-ip>`, then copy
-   `/etc/rancher/k3s/k3s.yaml` to your workstation unchanged and set
-   `KUBECONFIG` to that file.
+2. Wait for k3s to finish installing, then run `../deploy/connect-k3s.sh` from
+   the repository root. It securely copies the kubeconfig, creates the local
+   SSH tunnel on local port `16443`, and verifies that the node is ready.
 3. Deploy with `../deploy/apply-k3s.sh`. By default, it builds the application
    image locally and imports it directly into this one k3s server. The script
    reads this Terraform output and sets `MEDIASOUP_LISTEN_IP` automatically.
@@ -102,6 +113,16 @@ For example, after `KUBECONFIG` is configured for this server:
 
 ```bash
 ../deploy/apply-k3s.sh
+```
+
+It uses `~/.ssh/liveproctoring_poc` by default for the image import. If your
+key has a different path, pass `--identity-file /path/to/private-key`.
+
+The tunnel can be checked or stopped later with:
+
+```bash
+../deploy/connect-k3s.sh status
+../deploy/connect-k3s.sh stop
 ```
 
 For a later multi-node setup, push the image to a registry and pass it

@@ -14,6 +14,20 @@ entire current application.
 
 Enable TLS in the ingress before using camera/microphone outside localhost; browsers require a secure context. The UDP range is bounded by `MEDIASOUP_RTC_MIN_PORT` and `MEDIASOUP_RTC_MAX_PORT`.
 
+## TLS certificate
+
+For the Terraform-created server, run this once after the GoDaddy A record
+resolves to the server IP:
+
+```bash
+deploy/setup-tls.sh
+```
+
+It installs cert-manager from its official manifest, registers the Let's Encrypt account for
+`support@testpress.in`, requests the certificate, and configures Traefik to use
+it for `liveproctoring.tpsentinel.com`. HTTP port 80 must remain publicly
+reachable so Let's Encrypt can complete its validation.
+
 ## Build and load on a single-node cluster
 
 ```bash

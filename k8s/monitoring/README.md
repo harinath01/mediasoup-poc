@@ -7,16 +7,15 @@ Prometheus metrics at `/metrics`; the chart's ServiceMonitor scrapes it every
 
 ## Install on the k3s server
 
-Set a strong Grafana password in `values.yaml`, then run:
+Set a strong Grafana password in `values.yaml`, then run the automated setup
+script from the repository root:
 
 ```bash
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  --namespace monitoring --create-namespace \
-  --values k8s/monitoring/values.yaml
-kubectl apply -f k8s/monitoring/mediasoup-dashboard.yaml
+deploy/setup-monitoring.sh
 ```
+
+For a complete new-server setup, prefer `deploy/setup-poc.sh`; it prompts for
+the password and passes it to this script without writing it to the repository.
 
 Build and deploy the application image containing the `/metrics` endpoint
 before expecting metrics:
@@ -35,11 +34,13 @@ kubectl -n liveproctoring port-forward service/mediasoup-poc 3001:80
 curl http://127.0.0.1:3001/metrics
 ```
 
-For initial Grafana access, avoid exposing it publicly. Port-forward it:
+For this POC, the setup script creates a NodePort Service. Once the Grafana Pod
+is ready, open:
 
-```bash
-kubectl -n monitoring port-forward service/kube-prometheus-stack-grafana 3000:80
+```text
+http://<terraform-server-ip>:30300
 ```
 
-Open `http://127.0.0.1:3000`, log in as `admin`, and use the password from
-`values.yaml`. The **Mediasoup Overview** dashboard appears automatically.
+Log in as `admin`, and use the password from `values.yaml`. The **Mediasoup
+Overview** dashboard appears automatically. This endpoint is plain HTTP; use a
+Grafana DNS name and TLS rather than a public NodePort outside this POC.

@@ -10,6 +10,11 @@ TERRAFORM_DIR="${REPO_ROOT}/terraform"
 KUSTOMIZE_DIR="${REPO_ROOT}/k8s/base"
 IMAGE=""
 SKIP_IMAGE_SYNC="false"
+IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/liveproctoring_poc}"
+
+if [[ -z "${KUBECONFIG:-}" && -f "${HOME}/.kube/liveproctoring-k3s.yaml" ]]; then
+  export KUBECONFIG="${HOME}/.kube/liveproctoring-k3s.yaml"
+fi
 
 usage() {
   cat <<'EOF'
@@ -18,6 +23,7 @@ Usage: deploy/apply-k3s.sh [options]
 Options:
   --image <registry/image:tag>  Deploy an image already available from a registry.
   --skip-image-sync             Do not build/import an image (configuration-only deploy).
+  --identity-file <path>        Private SSH key. Default: ~/.ssh/liveproctoring_poc
   --terraform-dir <path>        Terraform directory. Default: ./terraform
   --help                        Show this help.
 
@@ -42,6 +48,10 @@ while [[ $# -gt 0 ]]; do
     --skip-image-sync)
       SKIP_IMAGE_SYNC="true"
       shift
+      ;;
+    --identity-file)
+      IDENTITY_FILE="${2:-}"
+      shift 2
       ;;
     --help|-h)
       usage
@@ -90,7 +100,13 @@ if [[ -z "${IMAGE}" && "${SKIP_IMAGE_SYNC}" == "false" ]]; then
   docker build -t "${IMAGE}" "${REPO_ROOT}"
 
   echo "Importing ${IMAGE} into k3s on ${PUBLIC_IP}"
-  docker save "${IMAGE}" | ssh "root@${PUBLIC_IP}" 'k3s ctr images import -'
+  SSH_OPTIONS=()
+  if [[ -f "${IDENTITY_FILE}" ]]; then
+    SSH_OPTIONS=(-i "${IDENTITY_FILE}")
+  else
+    echo "SSH identity file not found at ${IDENTITY_FILE}; using ssh-agent/default SSH configuration."
+  fi
+  docker save "${IMAGE}" | ssh "${SSH_OPTIONS[@]}" "root@${PUBLIC_IP}" 'k3s ctr images import -'
 fi
 
 kubectl apply -k "${KUSTOMIZE_DIR}"
