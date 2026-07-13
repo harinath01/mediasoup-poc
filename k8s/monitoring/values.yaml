@@ -13,6 +13,9 @@ grafana:
 
 prometheus:
   prometheusSpec:
+    # k6 browser runners push their short-lived test metrics here. Prometheus
+    # continues to scrape mediasoup through the ServiceMonitor below.
+    enableRemoteWriteReceiver: true
     retention: 15d
     storageSpec:
       volumeClaimTemplate:

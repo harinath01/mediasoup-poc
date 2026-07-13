@@ -87,7 +87,7 @@ if [[ "${ACTION}" == "status" ]]; then
 fi
 
 PUBLIC_IP="$(terraform -chdir="${TERRAFORM_DIR}" output -raw mediasoup_public_ipv4)"
-SSH_OPTIONS=(-o ExitOnForwardFailure=yes -o ServerAliveInterval=30)
+SSH_OPTIONS=(-o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=accept-new)
 
 if [[ -f "${IDENTITY_FILE}" ]]; then
   SSH_OPTIONS+=(-i "${IDENTITY_FILE}")

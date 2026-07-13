@@ -32,3 +32,20 @@ variable "ssh_key_name" {
   type        = string
   default     = "liveproctoring-poc-admin"
 }
+
+variable "k6_runner_count" {
+  description = "Number of temporary k3s agent servers dedicated to k6 browser runners. Set to 0 when no test is running."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.k6_runner_count >= 0 && floor(var.k6_runner_count) == var.k6_runner_count
+    error_message = "k6_runner_count must be a non-negative whole number."
+  }
+}
+
+variable "k6_runner_server_type" {
+  description = "Hetzner server type used for each temporary k6 browser runner."
+  type        = string
+  default     = "cpx41"
+}

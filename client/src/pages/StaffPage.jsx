@@ -5,6 +5,7 @@ import AppShell from '../components/AppShell.jsx';
 import StaffDashboard from '../components/StaffDashboard.jsx';
 import StaffJoinPanel from '../components/StaffJoinPanel.jsx';
 import { useRoomChat } from '../useRoomChat.js';
+import { installK6WebRtcTelemetry } from '../webrtcTelemetry.js';
 
 function StaffPage() {
   const TWO_HOURS_IN_SECONDS = 2 * 60 * 60;
@@ -51,6 +52,11 @@ function StaffPage() {
   useEffect(() => {
     refreshRooms();
   }, []);
+
+  useEffect(() => installK6WebRtcTelemetry({
+    role: 'staff',
+    getTransport: () => recvTransportRef.current,
+  }), []);
 
   useEffect(() => {
     for (const tile of tiles) {

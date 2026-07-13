@@ -68,7 +68,9 @@ Kubernetes resources, Service, and Traefik routing before using the server.
 
 ```bash
 docker build -t mediasoup-poc:local .
-k3d cluster create liveproctoring-local -p "8080:80@loadbalancer"
+k3d cluster create liveproctoring-local \
+  -p "8080:80@loadbalancer" \
+  -p "40000-40999:40000-40999/udp@server:0"
 export KUBECONFIG="$(k3d kubeconfig write liveproctoring-local)"
 k3d image import mediasoup-poc:local -c liveproctoring-local
 kubectl apply -k k8s/overlays/local

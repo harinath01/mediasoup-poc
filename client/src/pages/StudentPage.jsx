@@ -5,6 +5,7 @@ import { apiCall, sendJsonBeacon } from '../api.js';
 import AppShell, { cardClass, inputClass } from '../components/AppShell.jsx';
 import { STATUS_COPY } from '../constants/status.js';
 import { useRoomChat } from '../useRoomChat.js';
+import { installK6WebRtcTelemetry } from '../webrtcTelemetry.js';
 
 function StudentPage() {
   const [name, setName] = useState('');
@@ -45,6 +46,11 @@ function StudentPage() {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
+
+  useEffect(() => installK6WebRtcTelemetry({
+    role: 'student',
+    getTransport: () => sendTransportRef.current,
+  }), []);
 
   useEffect(() => {
     function handlePageHide() {

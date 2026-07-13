@@ -3,7 +3,9 @@
 This directory installs `kube-prometheus-stack`, which includes Prometheus,
 Grafana, Alertmanager, and Kubernetes metrics. The application exposes
 Prometheus metrics at `/metrics`; the chart's ServiceMonitor scrapes it every
-15 seconds. `mediasoup-dashboard.yaml` is auto-imported by Grafana.
+15 seconds. `mediasoup-dashboard.yaml` is auto-imported by Grafana. Prometheus
+also enables its remote-write receiver so k6 browser runners can push their
+short-lived test metrics into the same Grafana data source.
 
 ## Install on the k3s server
 

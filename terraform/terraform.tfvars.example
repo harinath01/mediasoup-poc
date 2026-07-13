@@ -4,3 +4,8 @@ ssh_public_key_path = "~/.ssh/liveproctoring_poc.pub"
 # Choose the Hetzner region and capacity for this persistent server.
 location    = "fsn1"
 server_type = "cpx32"
+
+# Browser Chromium is CPU and memory heavy. Begin with one cpx41 per roughly
+# 20 browser VUs, then tune from Grafana measurements.
+k6_runner_count       = 0
+k6_runner_server_type = "cpx41"

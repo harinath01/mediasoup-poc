@@ -1,0 +1,52 @@
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: ${TEST_RUN_NAME}
+  namespace: liveproctoring
+spec:
+  parallelism: ${K6_RUNNER_COUNT}
+  separate: true
+  # Keep jobs until the launcher collects their logs. The launcher deletes this
+  # resource and then removes temporary Hetzner runners by default.
+  script:
+    localFile: /test/mediasoup-session-test.js
+  arguments: "-o experimental-prometheus-rw"
+  runner:
+    image: "${K6_BROWSER_IMAGE}"
+    imagePullPolicy: IfNotPresent
+    nodeSelector:
+      workload: k6-browser
+    resources:
+      requests:
+        cpu: "${K6_RUNNER_CPU}"
+        memory: "${K6_RUNNER_MEMORY}"
+      limits:
+        cpu: "${K6_RUNNER_CPU}"
+        memory: "${K6_RUNNER_MEMORY}"
+    env:
+      - name: BASE_URL
+        value: "${BASE_URL}"
+      - name: ROOM_COUNT
+        value: "${ROOM_COUNT}"
+      - name: STUDENTS_PER_ROOM
+        value: "${STUDENTS_PER_ROOM}"
+      - name: STAFF_PER_ROOM
+        value: "${STAFF_PER_ROOM}"
+      - name: SESSION_DURATION
+        value: "${SESSION_DURATION}"
+      - name: RAMP_UP
+        value: "${RAMP_UP}"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/api/v1/write
+      - name: K6_PROMETHEUS_RW_TREND_STATS
+        value: avg,p(95),p(99)
+      - name: K6_PROMETHEUS_RW_STALE_MARKERS
+        value: "true"
+  # The starter and initializer use the same image because localFile lives in
+  # it. They can run on the control-plane node, which receives the image too.
+  starter:
+    image: "${K6_BROWSER_IMAGE}"
+    imagePullPolicy: IfNotPresent
+  initializer:
+    image: "${K6_BROWSER_IMAGE}"
+    imagePullPolicy: IfNotPresent

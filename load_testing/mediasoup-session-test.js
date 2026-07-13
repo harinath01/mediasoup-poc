@@ -45,6 +45,16 @@ const holdActionDuration = new Trend('staff_hold_action_duration', true);
 const joinSuccess = new Rate('session_join_success');
 const holdActionSuccess = new Rate('staff_hold_action_success');
 const joinFailures = new Counter('session_join_failures');
+const staffInboundBitrate = new Trend('webrtc_staff_inbound_bitrate_bps', true);
+const staffPacketsLost = new Counter('webrtc_staff_packets_lost');
+const staffJitter = new Trend('webrtc_staff_jitter_milliseconds', true);
+const staffRtt = new Trend('webrtc_staff_rtt_milliseconds', true);
+const staffDecodedFps = new Trend('webrtc_staff_decoded_fps', true);
+const staffRenderedFps = new Trend('webrtc_staff_rendered_fps', true);
+const studentOutboundBitrate = new Trend('webrtc_student_outbound_bitrate_bps', true);
+const studentRtt = new Trend('webrtc_student_rtt_milliseconds', true);
+const studentEncodedFps = new Trend('webrtc_student_encoded_fps', true);
+const studentRemotePacketsLost = new Counter('webrtc_student_remote_packets_lost');
 
 export const options = {
   scenarios: {
@@ -71,11 +81,13 @@ export default async function mediasoupSessionTest() {
   const page = await context.newPage();
   const tags = buildMetricTags(assignment);
   const joinStartedAt = Date.now();
+  let previousWebRtcSnapshot = null;
 
   try {
     await joinAssignedRole(page, assignment);
     recordJoinSuccess(tags, joinStartedAt);
-    await holdAssignedSession(page, assignment);
+    previousWebRtcSnapshot = await collectWebRtcMetrics(page, assignment, previousWebRtcSnapshot);
+    await holdAssignedSession(page, assignment, previousWebRtcSnapshot);
   } catch (error) {
     recordJoinFailure(tags);
     throw error;
@@ -129,16 +141,88 @@ function recordJoinFailure(tags) {
   joinFailures.add(1, tags);
 }
 
-async function holdAssignedSession(page, assignment) {
+async function holdAssignedSession(page, assignment, previousWebRtcSnapshot) {
   const holdUntil = Date.now() + appConfig.sessionDurationMs;
+  let previousSnapshot = previousWebRtcSnapshot;
 
   while (Date.now() < holdUntil) {
     if (assignment.role === 'staff') {
       await performStaffHoldCycle(page, assignment);
     }
 
+    previousSnapshot = await collectWebRtcMetrics(page, assignment, previousSnapshot);
     sleep(appConfig.holdLoopIntervalMs / 1000);
   }
+}
+
+async function collectWebRtcMetrics(page, assignment, previousSnapshot) {
+  const snapshot = await page.evaluate(async () => {
+    if (typeof window.__k6WebRtcTelemetry !== 'function') return null;
+    return window.__k6WebRtcTelemetry();
+  }).catch(() => null);
+
+  if (!snapshot?.ready || snapshot.role !== assignment.role) {
+    return previousSnapshot;
+  }
+
+  const tags = { role: assignment.role };
+  if (assignment.role === 'staff') {
+    addTrendIfNumber(staffJitter, secondsToMilliseconds(snapshot.inbound?.jitterSeconds), tags);
+    addTrendIfNumber(staffRtt, getRttMilliseconds(snapshot), tags);
+    addTrendIfNumber(staffDecodedFps, snapshot.inbound?.framesPerSecond, tags);
+  } else {
+    addTrendIfNumber(studentRtt, getRttMilliseconds(snapshot), tags);
+    addTrendIfNumber(studentEncodedFps, snapshot.outbound?.framesPerSecond, tags);
+  }
+
+  if (previousSnapshot) {
+    const elapsedMilliseconds = snapshot.timestampMs - previousSnapshot.timestampMs;
+    if (elapsedMilliseconds > 0) {
+      if (assignment.role === 'staff') {
+        addTrendIfNumber(staffInboundBitrate, calculateBitrate(snapshot.inbound?.bytes, previousSnapshot.inbound?.bytes, elapsedMilliseconds), tags);
+        addCounterDelta(staffPacketsLost, snapshot.inbound?.packetsLost, previousSnapshot.inbound?.packetsLost, tags);
+        addTrendIfNumber(staffRenderedFps, calculateRate(snapshot.renderedFrames, previousSnapshot.renderedFrames, elapsedMilliseconds), tags);
+      } else {
+        addTrendIfNumber(studentOutboundBitrate, calculateBitrate(snapshot.outbound?.bytes, previousSnapshot.outbound?.bytes, elapsedMilliseconds), tags);
+        addCounterDelta(studentRemotePacketsLost, snapshot.remoteInbound?.packetsLost, previousSnapshot.remoteInbound?.packetsLost, tags);
+      }
+    }
+  }
+
+  return snapshot;
+}
+
+function getRttMilliseconds(snapshot) {
+  return secondsToMilliseconds(snapshot.role === 'student'
+    ? snapshot.remoteInbound?.roundTripTimeSeconds ?? snapshot.candidatePairRttSeconds
+    : snapshot.inbound?.roundTripTimeSeconds ?? snapshot.candidatePairRttSeconds);
+}
+
+function secondsToMilliseconds(value) {
+  return isFiniteNumber(value) ? value * 1000 : null;
+}
+
+function calculateBitrate(currentBytes, previousBytes, elapsedMilliseconds) {
+  if (!isFiniteNumber(currentBytes) || !isFiniteNumber(previousBytes)) return null;
+  return Math.max(0, ((currentBytes - previousBytes) * 8 * 1000) / elapsedMilliseconds);
+}
+
+function calculateRate(currentValue, previousValue, elapsedMilliseconds) {
+  if (!isFiniteNumber(currentValue) || !isFiniteNumber(previousValue)) return null;
+  return Math.max(0, ((currentValue - previousValue) * 1000) / elapsedMilliseconds);
+}
+
+function addTrendIfNumber(metric, value, tags) {
+  if (isFiniteNumber(value)) metric.add(value, tags);
+}
+
+function addCounterDelta(metric, currentValue, previousValue, tags) {
+  if (!isFiniteNumber(currentValue) || !isFiniteNumber(previousValue)) return;
+  metric.add(Math.max(0, currentValue - previousValue), tags);
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 async function performStaffHoldCycle(page, assignment) {
@@ -386,7 +470,7 @@ function calculateMaxDurationMs(env, currentAppConfig) {
 }
 
 function buildPageUrl(route) {
-  return `${appConfig.baseUrl}${route}`;
+  return `${appConfig.baseUrl}${route}?k6Telemetry=1`;
 }
 
 function buildStaffJoinRoomSelector(roomId) {

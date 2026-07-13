@@ -1,10 +1,12 @@
 # Terraform infrastructure
 
-This directory creates the **persistent** Hetzner server for the POC:
+This directory creates the **persistent** Hetzner server for the POC and, only
+when requested, temporary k6 browser-runner agents:
 
 - one Ubuntu 24.04 server;
 - k3s, including its bundled Traefik, installed by cloud-init;
 - an SSH key registered in Hetzner Cloud.
+- zero or more k3s agents labeled `workload=k6-browser`.
 
 This POC intentionally does not create or manage Hetzner Cloud firewall rules.
 
@@ -12,6 +14,41 @@ It intentionally does **not** deploy the mediasoup container, Prometheus, or
 Grafana. Those remain Kubernetes resources in `../k8s`. It also does not change
 GoDaddy DNS; create or update the `liveproctoring.tpsentinel.com` A record after
 Terraform outputs the server IPv4 address.
+
+## k6 browser runner agents
+
+`k6_runner_count` defaults to `0`, so ordinary Terraform use creates only the
+mediasoup/k3s server. The k6 launcher changes this number for the duration of a
+test and returns it to zero afterward.
+
+Terraform generates the k3s join token with `random_password.k3s_token`. It is
+stored in Terraform state, so keep state private. The server and its agents use
+the server's public IPv4 for k3s joining; this POC intentionally has no Hetzner
+private network or firewall resource.
+
+Adding the Terraform-owned token to an **existing** server requires that server
+to be replaced, because cloud-init runs only on first boot. This is a one-time
+migration and changes the public IP. Review `terraform plan`, expect downtime,
+and update the GoDaddy A record after replacement. The k6 launcher restores
+the Kubernetes application/monitoring resources and pauses for that DNS change.
+Do not run this migration until you are ready for that interruption.
+
+Example temporary capacity:
+
+```bash
+terraform apply \
+  -var='k6_runner_count=10' \
+  -var='k6_runner_server_type=cpx41'
+```
+
+Delete only the runners after a manual test:
+
+```bash
+terraform apply -var='k6_runner_count=0'
+```
+
+Normally use `../deploy/run-k6-browser-test.sh` instead; it performs both
+steps and submits the Kubernetes TestRun.
 
 ## Prerequisites
 

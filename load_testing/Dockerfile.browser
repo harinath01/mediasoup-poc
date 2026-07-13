@@ -1,0 +1,26 @@
+# This image is the immutable runtime for every distributed k6 browser runner.
+# It contains k6, Chromium, this test, and the fake camera/microphone inputs.
+FROM curlimages/curl:8.12.1 AS media
+
+USER root
+
+ARG AUDIO_URL="https://sample-files.com/downloads/audio/wav/ambient-sounds-96000hz-24bit.wav"
+ARG AUDIO_SHA256="57c60917654c89fed2515d822fb974c83c42c0d9c6741536c571e66cc9fc5bca"
+ARG VIDEO_URL="https://d149yd38g6ldk.cloudfront.net/WebCam30s.y4m"
+ARG VIDEO_SHA256="61a6c3106786101b5fe6c478c012ad513014d31959f7da2a838cef18cab0b884"
+
+RUN mkdir -p /media \
+    && curl --fail --location --retry 3 --output /media/ambient-sounds-96000hz-24bit.wav "${AUDIO_URL}" \
+    && echo "${AUDIO_SHA256}  /media/ambient-sounds-96000hz-24bit.wav" | sha256sum -c \
+    && curl --fail --location --retry 3 --output /media/WebCam30s.y4m "${VIDEO_URL}" \
+    && echo "${VIDEO_SHA256}  /media/WebCam30s.y4m" | sha256sum -c
+
+FROM grafana/k6:2.0.0-with-browser
+
+COPY --from=media /media/ /opt/k6/fake-media/
+COPY mediasoup-session-test.js helper.js /test/
+
+# The same paths are used by every runner Pod. They are intentionally absolute
+# because Chromium receives them through K6_BROWSER_ARGS, outside the script.
+ENV K6_BROWSER_HEADLESS=true
+ENV K6_BROWSER_ARGS=use-fake-device-for-media-stream,use-fake-ui-for-media-stream,use-file-for-fake-video-capture=/opt/k6/fake-media/WebCam30s.y4m,use-file-for-fake-audio-capture=/opt/k6/fake-media/ambient-sounds-96000hz-24bit.wav
