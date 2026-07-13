@@ -48,6 +48,7 @@ async function safeResolve<T>(factory: () => Promise<T>, fallback: T): Promise<T
 
 export async function getMetricsSnapshot() {
   const workerSnapshot = await getWorkerRuntimeSnapshot();
+  const pausedConsumerCount = Array.from(consumers.values()).filter(entry => entry.consumer.paused).length;
 
   const transportStats = (
     await Promise.all(
@@ -101,6 +102,8 @@ export async function getMetricsSnapshot() {
       activeWebRtcTransports: transports.size,
       activeProducers: producers.size,
       activeConsumers: consumers.size,
+      pausedConsumers: pausedConsumerCount,
+      resumedConsumers: consumers.size - pausedConsumerCount,
     },
     bandwidth: {
       totalRecvBitrate: sumBy(transportStats, stat => stat.recvBitrate),
@@ -156,10 +159,13 @@ export async function getPrometheusMetrics() {
   appendGauge(lines, 'mediasoup_active_rooms', 'Active rooms', topology.activeRooms);
   appendGauge(lines, 'mediasoup_active_webrtc_transports', 'Active WebRTC transports', topology.activeWebRtcTransports);
   appendGauge(lines, 'mediasoup_active_producers', 'Active media producers', topology.activeProducers);
-  appendGauge(lines, 'mediasoup_active_consumers', 'Active media consumers', topology.activeConsumers);
+  appendGauge(lines, 'mediasoup_active_consumers', 'Open media consumers, including paused consumers', topology.activeConsumers);
+  appendGauge(lines, 'mediasoup_paused_consumers', 'Open media consumers that are paused', topology.pausedConsumers);
+  appendGauge(lines, 'mediasoup_resumed_consumers', 'Open media consumers that are resumed', topology.resumedConsumers);
 
   appendGauge(lines, 'mediasoup_transport_recv_bitrate_bps', 'Aggregate transport receive bitrate in bits per second', bandwidth.totalRecvBitrate);
   appendGauge(lines, 'mediasoup_transport_send_bitrate_bps', 'Aggregate transport send bitrate in bits per second', bandwidth.totalSendBitrate);
+  appendGauge(lines, 'mediasoup_available_outgoing_bitrate_bps', 'Aggregate available outgoing bitrate in bits per second', bandwidth.totalAvailableOutgoingBitrate);
   appendGauge(lines, 'mediasoup_rtp_recv_bitrate_bps', 'Aggregate RTP receive bitrate in bits per second', bandwidth.totalRtpRecvBitrate);
   appendGauge(lines, 'mediasoup_rtp_send_bitrate_bps', 'Aggregate RTP send bitrate in bits per second', bandwidth.totalRtpSendBitrate);
   appendGauge(lines, 'mediasoup_rtt_milliseconds', 'Average RTP round trip time in milliseconds', rtpQuality.rttMs.avg);
