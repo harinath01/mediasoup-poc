@@ -65,6 +65,6 @@ resource "hcloud_server" "k6_runner" {
     packages:
       - curl
     runcmd:
-      - curl -sfL https://get.k3s.io | K3S_URL=https://${hcloud_server.mediasoup.ipv4_address}:6443 K3S_TOKEN='${random_password.k3s_token.result}' sh -s - agent --node-label workload=k6-browser
+      - curl -sfL https://get.k3s.io | K3S_URL=https://${hcloud_server.mediasoup.ipv4_address}:6443 K3S_TOKEN='${random_password.k3s_token.result}' sh -s - agent --with-node-id --node-label workload=k6-browser --node-taint workload=k6-browser:NoSchedule
   CLOUD_INIT
 }

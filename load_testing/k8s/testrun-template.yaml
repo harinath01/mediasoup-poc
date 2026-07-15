@@ -10,12 +10,19 @@ spec:
   # resource and then removes temporary Hetzner runners by default.
   script:
     localFile: /test/mediasoup-session-test.js
-  arguments: "-o experimental-prometheus-rw"
+  # Script values use k6 __ENV, which is populated by -e options. The runner
+  # env block below remains for k6's output configuration.
+  arguments: "-o experimental-prometheus-rw -e BASE_URL=${BASE_URL} -e ROOM_COUNT=${ROOM_COUNT} -e STUDENTS_PER_ROOM=${STUDENTS_PER_ROOM} -e STAFF_PER_ROOM=${STAFF_PER_ROOM} -e SESSION_DURATION=${SESSION_DURATION} -e RAMP_UP=${RAMP_UP}"
   runner:
     image: "${K6_BROWSER_IMAGE}"
     imagePullPolicy: IfNotPresent
     nodeSelector:
       workload: k6-browser
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: k6-browser
+        effect: NoSchedule
     resources:
       requests:
         cpu: "${K6_RUNNER_CPU}"
@@ -50,3 +57,18 @@ spec:
   initializer:
     image: "${K6_BROWSER_IMAGE}"
     imagePullPolicy: IfNotPresent
+    # k6 archive/inspect evaluates the script, so it needs every setting read
+    # at module initialization (not just the runner Pods).
+    env:
+      - name: BASE_URL
+        value: "${BASE_URL}"
+      - name: ROOM_COUNT
+        value: "${ROOM_COUNT}"
+      - name: STUDENTS_PER_ROOM
+        value: "${STUDENTS_PER_ROOM}"
+      - name: STAFF_PER_ROOM
+        value: "${STAFF_PER_ROOM}"
+      - name: SESSION_DURATION
+        value: "${SESSION_DURATION}"
+      - name: RAMP_UP
+        value: "${RAMP_UP}"

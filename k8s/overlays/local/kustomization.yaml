@@ -20,6 +20,13 @@ configMapGenerator:
       - MEDIASOUP_RTC_MAX_PORT=41999
 
 patches:
+  # k3d's local server is not labeled workload=mediasoup.
+  - target:
+      kind: Deployment
+      name: mediasoup-poc
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
   - target:
       kind: Ingress
       name: mediasoup-poc

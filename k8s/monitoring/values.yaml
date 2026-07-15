@@ -3,6 +3,10 @@
 # after choosing DNS/TLS and credentials for the real cluster.
 grafana:
   adminPassword: welcome 
+  # Grafana stores its data on a local-path volume.  Keep that volume on the
+  # stable control-plane/media node, never on short-lived k6 runner nodes.
+  nodeSelector:
+    workload: mediasoup
   persistence:
     enabled: true
     size: 5Gi
@@ -17,6 +21,10 @@ prometheus:
     # continues to scrape mediasoup through the ServiceMonitor below.
     enableRemoteWriteReceiver: true
     retention: 15d
+    # Prometheus has a local-path volume too, so it must remain on the stable
+    # media node while Terraform creates and destroys k6 runner nodes.
+    nodeSelector:
+      workload: mediasoup
     storageSpec:
       volumeClaimTemplate:
         spec:

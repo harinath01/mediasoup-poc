@@ -87,6 +87,11 @@ fi
 echo "Deploying to Kubernetes context: $(kubectl config current-context)"
 echo "Using mediasoup announced public IPv4: ${PUBLIC_IP}"
 
+# Keep the stateful, host-networked mediasoup Pod on the k3s control-plane.
+# This label is applied through Kubernetes rather than cloud-init so an
+# ordinary deployment update never forces Terraform to replace the server.
+kubectl label nodes -l node-role.kubernetes.io/control-plane workload=mediasoup --overwrite
+
 if [[ -z "${IMAGE}" && "${SKIP_IMAGE_SYNC}" == "false" ]]; then
   for command in docker ssh; do
     if ! command -v "${command}" >/dev/null 2>&1; then

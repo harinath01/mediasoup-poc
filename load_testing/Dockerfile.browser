@@ -17,8 +17,13 @@ RUN mkdir -p /media \
 
 FROM grafana/k6:2.0.0-with-browser
 
+USER root
+RUN apk add --no-cache curl
+
 COPY --from=media /media/ /opt/k6/fake-media/
 COPY mediasoup-session-test.js helper.js /test/
+
+USER k6
 
 # The same paths are used by every runner Pod. They are intentionally absolute
 # because Chromium receives them through K6_BROWSER_ARGS, outside the script.

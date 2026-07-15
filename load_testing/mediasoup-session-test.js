@@ -491,10 +491,8 @@ async function clickAndPause(page, locator, delayMs = 500) {
 }
 
 function readBaseUrl(env) {
-  const baseUrl = (env.BASE_URL || '').trim();
-  if (!baseUrl) {
-    throw new Error('BASE_URL is required');
-  }
-
-  return baseUrl.replace(/\/$/, '');
+  // The k6 Operator archives/inspects the script before it starts a runner.
+  // That initializer does not pass k6 -e values, so use a harmless placeholder
+  // there. Actual TestRuns pass BASE_URL with -e and never navigate here.
+  return (env.BASE_URL || 'http://k6-initializer.invalid').trim().replace(/\/$/, '');
 }

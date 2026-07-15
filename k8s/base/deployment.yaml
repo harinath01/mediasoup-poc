@@ -19,6 +19,10 @@ spec:
       # WebRTC clients connect directly to mediasoup's UDP transport ports.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      # The Pod uses the server's public IP and a locally imported image. It
+      # must never be scheduled onto temporary k6 browser agent nodes.
+      nodeSelector:
+        workload: mediasoup
       containers:
         - name: app
           image: mediasoup-poc:latest

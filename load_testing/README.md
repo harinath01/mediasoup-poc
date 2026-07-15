@@ -271,6 +271,15 @@ The generated TestRun uses `parallelism` equal to `--runners` and
 Job per agent. The script rejects a test whose participant count cannot be
 split evenly across the selected runner count.
 
+The agents are also tainted `workload=k6-browser:NoSchedule`. Only k6 runner
+Pods tolerate that taint, keeping Prometheus, Grafana, Traefik, cert-manager,
+and the mediasoup application off the temporary Chromium load generators.
+
+For initial `cpx32` calibration, the launcher requests 3 CPU and 6 GiB per
+runner Pod. A `cpx32` has roughly 8 GB total memory, so requesting `8Gi` leaves
+no schedulable headroom for k3s itself. Increase resources deliberately for a
+larger node, for example `--runner-cpu 6 --runner-memory 12Gi` on a `cpx41`.
+
 Open Grafana at `http://<mediasoup-server-ip>:30300`, then select
 **Mediasoup Overview**. The **k6 Browser WebRTC** row shows staff inbound
 bitrate/loss/jitter/RTT/FPS and student outbound bitrate/RTT/FPS/loss feedback.
