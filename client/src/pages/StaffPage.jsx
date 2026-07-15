@@ -40,6 +40,11 @@ function StaffPage() {
   const currentPageRef = useRef(0);
   const tileVideoRefs = useRef(new Map());
   const tilesRef = useRef([]);
+  // A burst of producer events arrives while students join. Keep only the
+  // newest snapshot and process one synchronization at a time; otherwise two
+  // overlapping passes can both create a consumer for the same producer.
+  const pendingProducerSnapshotRef = useRef(null);
+  const producerSyncPromiseRef = useRef(null);
   const joinedRoomId = roomInfo.split(' | ')[0]?.replace('Room: ', '') || '';
   const joinedName = roomInfo.split(' | ')[1]?.replace('Staff: ', '') || '';
   const { messages, presence, mediaProducers, connected: chatConnected, chatError, sendMessage } = useRoomChat({
@@ -822,7 +827,7 @@ function StaffPage() {
     tileVideoRefs.current.delete(studentName);
   }
 
-  async function syncRoomProducers(producers) {
+  async function syncRoomProducersNow(producers) {
     const nextProducerMap = buildProducerMap(producers);
     producerMapRef.current = nextProducerMap;
 
@@ -857,6 +862,28 @@ function StaffPage() {
         await syncStudentConsumers(tile, producerInfo);
       }
     }
+  }
+
+  async function syncRoomProducers(producers) {
+    pendingProducerSnapshotRef.current = producers;
+
+    if (producerSyncPromiseRef.current) {
+      return producerSyncPromiseRef.current;
+    }
+
+    const drainProducerSnapshots = async () => {
+      while (pendingProducerSnapshotRef.current) {
+        const latestProducers = pendingProducerSnapshotRef.current;
+        pendingProducerSnapshotRef.current = null;
+        await syncRoomProducersNow(latestProducers);
+      }
+    };
+
+    producerSyncPromiseRef.current = drainProducerSnapshots().finally(() => {
+      producerSyncPromiseRef.current = null;
+    });
+
+    return producerSyncPromiseRef.current;
   }
 
   function toggleRemoteAudio(studentName) {
